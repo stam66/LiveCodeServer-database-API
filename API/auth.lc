@@ -90,12 +90,12 @@ function handleLogin
   -- Parse user data
   split tData by tab
   
-  put tUserID into tData[1]
-  put tDBUsername into tData[2]
-  put tPasswordHash into tData[3]
-  put tPasswordSalt into tData[4]
-  put tName into tData[5]
-  put tEmail into tData[6]
+  put tData[1] into tUserID
+  put tData[2] into tDBUsername
+  put tData[3] into tPasswordHash
+  put tData[4] into tPasswordSalt
+  put tData[5] into tName
+  put tData[6] into tEmail
   
   -- Verify password with salt
   if tPasswordSalt is empty then
