@@ -73,8 +73,8 @@ function handleLogin
     return jsonError(tConnectionID)
   end if
   
-  -- Query user with salt
-  put "SELECT id, username, password_hash, password_salt, name, email, is_active" into tSQL
+  -- Query user with salt and iterations
+  put "SELECT id, username, password_hash, password_salt, password_iterations, name, email, is_active" into tSQL
   put " FROM users" after tSQL
   put " WHERE username = '" & sqlEscape(tUsername) & "'" after tSQL
   put " AND is_active = 1" after tSQL
@@ -94,41 +94,66 @@ function handleLogin
   put tData[2] into tDBUsername
   put tData[3] into tPasswordHash
   put tData[4] into tPasswordSalt
-  put tData[5] into tName
-  put tData[6] into tEmail
+  put tData[5] into tPasswordIterations
+  put tData[6] into tName
+  put tData[7] into tEmail
   
-  -- Verify password with salt
+  -- Verify password with enhanced hashing (iterations stored in DB)
   if tPasswordSalt is empty then
-    -- Legacy unsalted hash (for migration compatibility)
-    -- Generate salt and rehash on successful login
+    -- Legacy unsalted hash - upgrade to enhanced version
     put messageDigest(tPassword, "SHA256") into tComputedHash
     
     if tComputedHash is tPasswordHash then
-      -- Valid legacy password - upgrade to salted version
-      put generateSalt() into tNewSalt
-      put hashPassword(tPassword, tNewSalt) into tNewHash
+      -- Valid legacy password - upgrade to enhanced version with iterations
+      put hashPasswordEnhanced(tPassword) into tEnhanced
       
-      -- Validate user ID (from database, but validate anyway)
+      -- Validate user ID
       put validateInteger(tUserID) into tSafeUserID
       if tSafeUserID is empty then
         return jsonError("Invalid user ID")
       end if
       
-      -- Update database with salted password
+      -- Update database with enhanced password (with iterations)
       put dbConnect() into tUpgradeConn
-      put "UPDATE users SET password_hash = '" & sqlEscape(tNewHash) & "'" into tUpgradeSQL
-      put ", password_salt = '" & sqlEscape(tNewSalt) & "'" after tUpgradeSQL
+      put "UPDATE users SET password_hash = '" & sqlEscape(tEnhanced["hash"]) & "'" into tUpgradeSQL
+      put ", password_salt = '" & sqlEscape(tEnhanced["salt"]) & "'" after tUpgradeSQL
+      put ", password_iterations = " & tEnhanced["iterations"] after tUpgradeSQL
       put " WHERE id = " & tSafeUserID after tUpgradeSQL
       revExecuteSQL tUpgradeConn, tUpgradeSQL
       revCloseDatabase tUpgradeConn
     else
       return jsonError("Invalid username or password")
     end if
-  else
-    -- Salted password verification
-    put hashPassword(tPassword, tPasswordSalt) into tComputedHash
     
-    if tComputedHash is not tPasswordHash then
+  else if tPasswordIterations is empty then
+    -- Legacy single-iteration salted hash - upgrade to enhanced version
+    if verifyPassword(tPassword, tPasswordHash, tPasswordSalt) then
+      -- Valid legacy salted password - upgrade to iterations
+      put hashPasswordEnhanced(tPassword) into tEnhanced
+      
+      -- Validate user ID
+      put validateInteger(tUserID) into tSafeUserID
+      if tSafeUserID is empty then
+        return jsonError("Invalid user ID")
+      end if
+      
+      -- Update database with enhanced password
+      put dbConnect() into tUpgradeConn
+      put "UPDATE users SET password_hash = '" & sqlEscape(tEnhanced["hash"]) & "'" into tUpgradeSQL
+      put ", password_salt = '" & sqlEscape(tEnhanced["salt"]) & "'" after tUpgradeSQL
+      put ", password_iterations = " & tEnhanced["iterations"] after tUpgradeSQL
+      put " WHERE id = " & tSafeUserID after tUpgradeSQL
+      revExecuteSQL tUpgradeConn, tUpgradeSQL
+      revCloseDatabase tUpgradeConn
+    else
+      return jsonError("Invalid username or password")
+    end if
+    
+  else
+    -- Enhanced password verification with iterations
+    put verifyPasswordEnhanced(tPassword, tPasswordHash, tPasswordSalt, tPasswordIterations) into tIsValid
+    
+    if tIsValid is not true then
       return jsonError("Invalid username or password")
     end if
   end if

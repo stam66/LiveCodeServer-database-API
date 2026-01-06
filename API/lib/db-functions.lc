@@ -327,7 +327,7 @@ end validateJWT
 
 
 -- ============================================================================
--- PASSWORD HASHING (SALTED SHA256)
+-- PASSWORD HASHING (ENHANCED WITH ITERATIONS)
 -- ============================================================================
 
 -- Generate a random salt for password hashing
@@ -349,30 +349,89 @@ function generateSalt
 end generateSalt
 
 
--- Hash password with salt using SHA256
+-- ENHANCED: Hash password with iterations (PBKDF2-like)
+-- Parameters:
+--   pPassword (String) - Plain text password
+--   pSalt (String) - Salt (generated if empty)
+--   pIterations (Number) - Hash iterations (default: 1000)
+-- Returns: Array with keys: hash, salt, iterations
+-- Note: 1000+ iterations provides strong protection against brute force
+--       Performance: ~1-10ms depending on iteration count
+-- RECOMMENDED: Use this for all new passwords
+function hashPasswordEnhanced pPassword, pSalt, pIterations
+  -- Generate salt if not provided
+  if pSalt is empty then
+    put generateSalt() into pSalt
+  end if
+  
+  -- Set default iterations (1000 = good balance of security/performance)
+  if pIterations is empty then
+    put 1000 into pIterations
+  end if
+  
+  -- Initial hash: SHA256(password + salt)
+  put messageDigest(pPassword & pSalt, "SHA256") into tHash
+  
+  -- Iterate: SHA256(previous_hash + salt) repeated pIterations times
+  repeat with i = 2 to pIterations
+    put messageDigest(tHash & pSalt, "SHA256") into tHash
+  end repeat
+  
+  -- Return array with hash, salt, and iteration count
+  put tHash into tResult["hash"]
+  put pSalt into tResult["salt"]
+  put pIterations into tResult["iterations"]
+  
+  return tResult
+end hashPasswordEnhanced
+
+
+-- ENHANCED: Verify password with iteration support
+-- Parameters:
+--   pPassword (String) - Plain text password to verify
+--   pStoredHash (String) - Stored password hash
+--   pStoredSalt (String) - Stored password salt
+--   pIterations (Number) - Number of iterations used (default: 1000)
+-- Returns: Boolean - true if password matches, false otherwise
+-- Note: Must use same iteration count as when password was hashed
+function verifyPasswordEnhanced pPassword, pStoredHash, pStoredSalt, pIterations
+  -- Set default iterations
+  if pIterations is empty then
+    put 1000 into pIterations
+  end if
+  
+  -- Recompute hash with same parameters
+  put hashPasswordEnhanced(pPassword, pStoredSalt, pIterations) into tResult
+  
+  -- Compare computed hash with stored hash
+  return (tResult["hash"] is pStoredHash)
+end verifyPasswordEnhanced
+
+
+-- ============================================================================
+-- SIMPLE PASSWORD HASHING (LEGACY - Use Enhanced version for new passwords)
+-- ============================================================================
+
+-- Simple hash with single SHA256 iteration (LEGACY)
 -- Parameters:
 --   pPassword (String) - Plain text password
 --   pSalt (String) - Salt string (32 hex characters)
 -- Returns: Hashed password (64 hex characters)
--- Note: Uses SHA256(password + salt) for secure password storage
+-- Note: LEGACY function - Use hashPasswordEnhanced() for new passwords
+--       Kept for backward compatibility with existing passwords
 function hashPassword pPassword, pSalt
-  -- Combine password and salt
-  put pPassword & pSalt into tSaltedPassword
-  
-  -- Hash with SHA256
-  put messageDigest(tSaltedPassword, "SHA256") into tHash
-  
+  put messageDigest(pPassword & pSalt, "SHA256") into tHash
   return tHash
 end hashPassword
 
 
--- Verify password against stored hash and salt
+-- Simple password verification (LEGACY)
 -- Parameters:
 --   pPassword (String) - Plain text password to verify
 --   pStoredHash (String) - Stored password hash
 --   pStoredSalt (String) - Stored password salt
 -- Returns: Boolean - true if password matches, false otherwise
--- Note: Convenience function for password verification
+-- Note: LEGACY function - Use verifyPasswordEnhanced() for new passwords
 function verifyPassword pPassword, pStoredHash, pStoredSalt
   put hashPassword(pPassword, pStoredSalt) into tComputedHash
   return (tComputedHash is pStoredHash)
