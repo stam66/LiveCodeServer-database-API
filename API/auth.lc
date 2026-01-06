@@ -108,11 +108,17 @@ function handleLogin
       put generateSalt() into tNewSalt
       put hashPassword(tPassword, tNewSalt) into tNewHash
       
+      -- Validate user ID (from database, but validate anyway)
+      put validateInteger(tUserID) into tSafeUserID
+      if tSafeUserID is empty then
+        return jsonError("Invalid user ID")
+      end if
+      
       -- Update database with salted password
       put dbConnect() into tUpgradeConn
       put "UPDATE users SET password_hash = '" & sqlEscape(tNewHash) & "'" into tUpgradeSQL
       put ", password_salt = '" & sqlEscape(tNewSalt) & "'" after tUpgradeSQL
-      put " WHERE id = " & tUserID after tUpgradeSQL
+      put " WHERE id = " & tSafeUserID after tUpgradeSQL
       revExecuteSQL tUpgradeConn, tUpgradeSQL
       revCloseDatabase tUpgradeConn
     else

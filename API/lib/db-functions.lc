@@ -113,6 +113,47 @@ function getJWTExpiration
 end getJWTExpiration
 
 
+-- Generate JWT token with user data (convenience wrapper)
+-- Parameters:
+--   pUserID (Number) - User ID
+--   pUsername (String) - Username
+--   pName (String) - User's full name
+--   pExpiry (Number) - Optional expiration in seconds (default: 1800 = 30 min)
+-- Returns: JWT token string
+-- Note: Convenience function - builds payload array and calls createJWT()
+function generateJWT pUserID, pUsername, pName, pExpiry
+  -- Build payload array
+  put pUserID into tPayload["user_id"]
+  put pUsername into tPayload["username"]
+  put pName into tPayload["name"]
+  
+  -- Add custom expiration if provided
+  if pExpiry is a number and pExpiry > 0 then
+    put the seconds + pExpiry into tPayload["exp"]
+    put the seconds into tPayload["iat"]
+    
+    -- Create token without automatic expiration (we set it manually)
+    put "HS256" into tHeader["alg"]
+    put "JWT" into tHeader["typ"]
+    
+    put base64URLEncode(JSONStringify(tHeader)) into tEncodedHeader
+    put base64URLEncode(JSONStringify(tPayload)) into tEncodedPayload
+    
+    put tEncodedHeader & "." & tEncodedPayload into tData
+    put createSignature(tData, getJWTSecret()) into tSignature
+    
+    if tSignature begins with "ERROR:" then
+      return tSignature
+    end if
+    
+    return tEncodedHeader & "." & tEncodedPayload & "." & tSignature
+  else
+    -- Use default expiration from createJWT
+    return createJWT(tPayload)
+  end if
+end generateJWT
+
+
 -- Create signed JWT token
 -- Parameters:
 --   pPayload (Array) - User data to encode (user_id, username, etc.)
@@ -336,4 +377,34 @@ function verifyPassword pPassword, pStoredHash, pStoredSalt
   put hashPassword(pPassword, pStoredSalt) into tComputedHash
   return (tComputedHash is pStoredHash)
 end verifyPassword
+
+
+-- ============================================================================
+-- INPUT VALIDATION
+-- ============================================================================
+
+-- Validate that input is a positive integer
+-- Parameters:
+--   pValue (String) - Value to validate
+-- Returns: Integer if valid, empty if invalid
+-- Note: Prevents SQL injection in numeric fields
+function validateInteger pValue
+  -- Check if numeric
+  if pValue is not a number then
+    return empty
+  end if
+  
+  -- Check if integer (no decimals)
+  if pValue contains "." then
+    return empty
+  end if
+  
+  -- Check if positive
+  if pValue < 1 then
+    return empty
+  end if
+  
+  -- Return as integer
+  return pValue
+end validateInteger
 ?>

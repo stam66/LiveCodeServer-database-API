@@ -52,17 +52,35 @@ return jsonError("User not found")
 
 ## JWT Functions
 
+### generateJWT(pUserID, pUsername, pName, pExpiry)
+Generate JWT token with user data (recommended).
+```livecode
+-- Simple usage with default 30-minute expiry
+put generateJWT(123, "admin", "John Doe", 1800) into tToken
+
+-- Custom expiry (in seconds)
+put generateJWT(123, "admin", "John Doe", 3600) into tToken  -- 1 hour
+```
+**Parameters:**
+- `pUserID` (Number) - User ID
+- `pUsername` (String) - Username
+- `pName` (String) - User's full name
+- `pExpiry` (Number) - Optional: seconds until expiration (default: 1800)
+
+**Returns:** JWT token string  
+**Use:** Auth login endpoints (see `auth.lc`)
+
 ### createJWT(pPayload)
-Create signed JWT token.
+Create JWT token from payload array (advanced).
 ```livecode
 put 123 into tPayload["user_id"]
 put "admin" into tPayload["username"]
+put "extra" into tPayload["custom_field"]
 put createJWT(tPayload) into tToken
--- Returns: eyJhbGc...
 ```
 **Parameters:** `pPayload` (Array) - User data  
 **Returns:** JWT token string  
-**Note:** Adds automatic expiration (30 minutes)
+**Note:** For custom payloads. Use `generateJWT()` for standard auth.
 
 ### verifyJWT(pToken)
 Verify token signature and expiration.
@@ -287,6 +305,26 @@ end if
 
 ---
 
+## Input Validation Functions
+
+### validateInteger(pValue)
+Validate positive integer input (prevents SQL injection).
+```livecode
+put validateInteger($_GET["id"]) into tSafeID
+if tSafeID is empty then
+  return jsonError("Invalid ID")
+end if
+
+-- Safe to use in SQL
+put "WHERE id = " & tSafeID after tSQL
+```
+**Returns:** Integer if valid, empty if invalid  
+**Use:** All numeric IDs from user input
+
+**Security:** ALWAYS validate integers before using in SQL queries, even if "supposed" to be numbers.
+
+---
+
 ## Complete Example
 
 ```livecode
@@ -357,6 +395,7 @@ Built-in LiveCode Server variables:
 |----------|---------|---------|
 | `dbConnect()` | Connect to database | Connection ID or error |
 | `sqlEscape(str)` | Escape SQL string | Escaped string |
+| `validateInteger(val)` | Validate positive integer | Integer or empty |
 | `jsonSuccess(data)` | Success response | JSON string |
 | `jsonError(msg)` | Error response | JSON string |
 | `generateJWT(id, username, name, expiry)` | Create token | JWT string |
