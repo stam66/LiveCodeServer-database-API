@@ -1,0 +1,380 @@
+<?lc
+-- ============================================================================
+-- RESOURCE CRUD ENDPOINT TEMPLATE
+-- LiveCode Server RPC API Template
+-- ============================================================================
+--
+-- This is a template file. Replace PLACEHOLDER with your resource name.
+--
+-- Quick replacement:
+--   sed -i 's/PLACEHOLDER/products/g' yourfile.lc
+--
+-- This will replace:
+--   - Table name: PLACEHOLDER → products
+--   - Function names: handleListPLACEHOLDER → handleListProducts
+--   - SQL queries: FROM PLACEHOLDER → FROM products
+--
+-- Available Actions:
+--   - list: Get all records
+--   - read: Get single record by ID
+--   - create: Create new record (requires auth)
+--   - update: Update existing record (requires auth)
+--   - delete: Delete record (requires auth)
+--   - search: Search by keyword
+--   - by_status: Filter by status
+--
+-- See FUNCTION-REFERENCE.md for complete API documentation
+-- ============================================================================
+
+include "lib/db-functions.lc"
+
+on startup
+  put header "Content-Type: application/json"
+  
+  put $_GET["action"] into tAction
+  put $_GET["id"] into tID
+  put $_GET["keyword"] into tKeyword
+  put $_GET["status"] into tStatus
+  put $_POST_RAW into tPostData
+  
+  put dbConnect() into tConnectionID
+  if tConnectionID begins with "ERROR:" then
+    put jsonError(tConnectionID)
+    exit startup
+  end if
+  
+  switch tAction
+    case "list"
+      put handleListPLACEHOLDER(tConnectionID) into tResponse
+      break
+    case "read"
+      put handleReadPLACEHOLDER(tConnectionID, tID) into tResponse
+      break
+    case "create"
+      put handleCreatePLACEHOLDER(tConnectionID, tPostData) into tResponse
+      break
+    case "update"
+      put handleUpdatePLACEHOLDER(tConnectionID, tPostData) into tResponse
+      break
+    case "delete"
+      put handleDeletePLACEHOLDER(tConnectionID, tID) into tResponse
+      break
+    case "search"
+      put handleSearchPLACEHOLDER(tConnectionID, tKeyword) into tResponse
+      break
+    case "by_status"
+      put handlePLACEHOLDERByStatus(tConnectionID, tStatus) into tResponse
+      break
+    default
+      put jsonError("Invalid action. Use: list, read, create, update, delete, search, by_status") into tResponse
+  end switch
+  
+  revCloseDatabase tConnectionID
+  put tResponse
+end startup
+
+startup
+
+
+-- ============================================================================
+-- LIST HANDLER
+-- ============================================================================
+
+-- Get all records from PLACEHOLDER table
+-- HTTP: GET /PLACEHOLDER.lc?action=list
+-- Auth: Not required
+-- Parameters: None
+-- Returns: JSON array of all records
+function handleListPLACEHOLDER pConnectionID
+  put "SELECT id, name, description, status, created_at, updated_at" into tSQL
+  put " FROM PLACEHOLDER" after tSQL
+  put " ORDER BY name" after tSQL
+  
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tData
+  
+  if tData begins with "revdberr" then
+    return jsonError(tData)
+  end if
+  
+  put 1 into tIndex
+  repeat for each line tLine in tData
+    split tLine by tab
+    
+    put tLine[1] into tRecords[tIndex]["id"]
+    put tLine[2] into tRecords[tIndex]["name"]
+    put tLine[3] into tRecords[tIndex]["description"]
+    put tLine[4] into tRecords[tIndex]["status"]
+    put tLine[5] into tRecords[tIndex]["created_at"]
+    put tLine[6] into tRecords[tIndex]["updated_at"]
+    
+    add 1 to tIndex
+  end repeat
+  
+  return jsonSuccess(tRecords)
+end handleListPLACEHOLDER
+
+
+-- ============================================================================
+-- READ HANDLER
+-- ============================================================================
+
+-- Get single record by ID
+-- HTTP: GET /PLACEHOLDER.lc?action=read&id=1
+-- Auth: Not required
+-- Parameters:
+--   pID (Number) - Record ID
+-- Returns: JSON object with record data
+function handleReadPLACEHOLDER pConnectionID, pID
+  if pID is empty then
+    return jsonError("Record ID required")
+  end if
+  
+  put "SELECT id, name, description, status, created_at, updated_at" into tSQL
+  put " FROM PLACEHOLDER" after tSQL
+  put " WHERE id =" && pID after tSQL
+  
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tData
+  
+  if tData begins with "revdberr" or tData is empty then
+    return jsonError("Record not found")
+  end if
+  
+  split tData by tab
+  
+  put tData[1] into tRecord["id"]
+  put tData[2] into tRecord["name"]
+  put tData[3] into tRecord["description"]
+  put tData[4] into tRecord["status"]
+  put tData[5] into tRecord["created_at"]
+  put tData[6] into tRecord["updated_at"]
+  
+  return jsonSuccess(tRecord)
+end handleReadPLACEHOLDER
+
+
+-- ============================================================================
+-- CREATE HANDLER
+-- ============================================================================
+
+-- Create new record
+-- HTTP: POST /PLACEHOLDER.lc?action=create
+-- Auth: Required (JWT token in Authorization header)
+-- Body: {"name":"Product Name","description":"...","status":"active"}
+-- Returns: JSON with new record ID
+function handleCreatePLACEHOLDER pConnectionID, pPostData
+  -- Validate JWT token
+  put validateJWT() into tUser
+  if tUser begins with "ERROR:" then
+    return jsonError(tUser)
+  end if
+  
+  -- Parse POST data
+  if pPostData is empty then
+    return jsonError("Request data required")
+  end if
+  
+  put JSONParser(pPostData) into tData
+  
+  -- Validate required fields
+  if tData["name"] is empty then
+    return jsonError("Name is required")
+  end if
+  
+  -- Build INSERT query
+  put "INSERT INTO PLACEHOLDER (name, description, status, created_at, updated_at)" into tSQL
+  put " VALUES (" after tSQL
+  put "'" & sqlEscape(tData["name"]) & "'," after tSQL
+  put "'" & sqlEscape(tData["description"]) & "'," after tSQL
+  put "'" & sqlEscape(tData["status"]) & "'," after tSQL
+  put "NOW(), NOW()" after tSQL
+  put ")" after tSQL
+  
+  revExecuteSQL pConnectionID, tSQL
+  
+  if the result is not empty then
+    return jsonError(the result)
+  end if
+  
+  -- Get inserted ID (database-specific)
+  -- MySQL:
+  put revDataFromQuery(tab, return, pConnectionID, "SELECT LAST_INSERT_ID()") into tNewID
+  -- PostgreSQL: Use RETURNING id in INSERT statement
+  -- SQLite: SELECT last_insert_rowid()
+  
+  put tNewID into tResult["id"]
+  put "Record created successfully" into tResult["message"]
+  
+  return jsonSuccess(tResult)
+end handleCreatePLACEHOLDER
+
+
+-- ============================================================================
+-- UPDATE HANDLER
+-- ============================================================================
+
+-- Update existing record
+-- HTTP: POST /PLACEHOLDER.lc?action=update
+-- Auth: Required (JWT token in Authorization header)
+-- Body: {"id":1,"name":"Updated Name","status":"inactive"}
+-- Returns: JSON success message
+function handleUpdatePLACEHOLDER pConnectionID, pPostData
+  -- Validate JWT token
+  put validateJWT() into tUser
+  if tUser begins with "ERROR:" then
+    return jsonError(tUser)
+  end if
+  
+  -- Parse POST data
+  if pPostData is empty then
+    return jsonError("Request data required")
+  end if
+  
+  put JSONParser(pPostData) into tData
+  
+  if tData["id"] is empty then
+    return jsonError("Record ID required")
+  end if
+  
+  -- Build UPDATE query
+  put "UPDATE PLACEHOLDER SET" into tSQL
+  put " name = '" & sqlEscape(tData["name"]) & "'," after tSQL
+  put " description = '" & sqlEscape(tData["description"]) & "'," after tSQL
+  put " status = '" & sqlEscape(tData["status"]) & "'," after tSQL
+  put " updated_at = NOW()" after tSQL
+  put " WHERE id =" && tData["id"] after tSQL
+  
+  revExecuteSQL pConnectionID, tSQL
+  
+  if the result is not empty then
+    return jsonError(the result)
+  end if
+  
+  put "Record updated successfully" into tResult["message"]
+  return jsonSuccess(tResult)
+end handleUpdatePLACEHOLDER
+
+
+-- ============================================================================
+-- DELETE HANDLER
+-- ============================================================================
+
+-- Delete record by ID
+-- HTTP: GET or POST /PLACEHOLDER.lc?action=delete&id=1
+-- Auth: Required (JWT token in Authorization header)
+-- Parameters:
+--   pID (Number) - Record ID to delete
+-- Returns: JSON success message
+function handleDeletePLACEHOLDER pConnectionID, pID
+  -- Validate JWT token
+  put validateJWT() into tUser
+  if tUser begins with "ERROR:" then
+    return jsonError(tUser)
+  end if
+  
+  if pID is empty then
+    return jsonError("Record ID required")
+  end if
+  
+  put "DELETE FROM PLACEHOLDER WHERE id =" && pID into tSQL
+  
+  revExecuteSQL pConnectionID, tSQL
+  
+  if the result is not empty then
+    return jsonError(the result)
+  end if
+  
+  put "Record deleted successfully" into tResult["message"]
+  return jsonSuccess(tResult)
+end handleDeletePLACEHOLDER
+
+
+-- ============================================================================
+-- SEARCH HANDLER
+-- ============================================================================
+
+-- Search records by keyword
+-- HTTP: GET /PLACEHOLDER.lc?action=search&keyword=laptop
+-- Auth: Not required
+-- Parameters:
+--   pKeyword (String) - Search term
+-- Returns: JSON array of matching records
+function handleSearchPLACEHOLDER pConnectionID, pKeyword
+  if pKeyword is empty then
+    return jsonError("Search keyword required")
+  end if
+  
+  put sqlEscape(pKeyword) into tSafeKeyword
+  
+  put "SELECT id, name, description, status, created_at, updated_at" into tSQL
+  put " FROM PLACEHOLDER" after tSQL
+  put " WHERE name LIKE '%" & tSafeKeyword & "%'" after tSQL
+  put " OR description LIKE '%" & tSafeKeyword & "%'" after tSQL
+  put " ORDER BY name" after tSQL
+  
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tData
+  
+  if tData begins with "revdberr" then
+    return jsonError(tData)
+  end if
+  
+  put 1 into tIndex
+  repeat for each line tLine in tData
+    split tLine by tab
+    
+    put tLine[1] into tRecords[tIndex]["id"]
+    put tLine[2] into tRecords[tIndex]["name"]
+    put tLine[3] into tRecords[tIndex]["description"]
+    put tLine[4] into tRecords[tIndex]["status"]
+    put tLine[5] into tRecords[tIndex]["created_at"]
+    put tLine[6] into tRecords[tIndex]["updated_at"]
+    
+    add 1 to tIndex
+  end repeat
+  
+  return jsonSuccess(tRecords)
+end handleSearchPLACEHOLDER
+
+
+-- ============================================================================
+-- FILTER BY STATUS HANDLER
+-- ============================================================================
+
+-- Filter records by status
+-- HTTP: GET /PLACEHOLDER.lc?action=by_status&status=active
+-- Auth: Not required
+-- Parameters:
+--   pStatus (String) - Status value to filter by
+-- Returns: JSON array of filtered records
+function handlePLACEHOLDERByStatus pConnectionID, pStatus
+  if pStatus is empty then
+    return jsonError("Status parameter required")
+  end if
+  
+  put "SELECT id, name, description, status, created_at, updated_at" into tSQL
+  put " FROM PLACEHOLDER" after tSQL
+  put " WHERE status = '" & sqlEscape(pStatus) & "'" after tSQL
+  put " ORDER BY name" after tSQL
+  
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tData
+  
+  if tData begins with "revdberr" then
+    return jsonError(tData)
+  end if
+  
+  put 1 into tIndex
+  repeat for each line tLine in tData
+    split tLine by tab
+    
+    put tLine[1] into tRecords[tIndex]["id"]
+    put tLine[2] into tRecords[tIndex]["name"]
+    put tLine[3] into tRecords[tIndex]["description"]
+    put tLine[4] into tRecords[tIndex]["status"]
+    put tLine[5] into tRecords[tIndex]["created_at"]
+    put tLine[6] into tRecords[tIndex]["updated_at"]
+    
+    add 1 to tIndex
+  end repeat
+  
+  return jsonSuccess(tRecords)
+end handlePLACEHOLDERByStatus
+?>

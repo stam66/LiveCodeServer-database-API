@@ -1,0 +1,122 @@
+<?lc
+-- ============================================================================
+-- AUTHENTICATION ENDPOINT
+-- LiveCode Server RPC API Template
+-- ============================================================================
+--
+-- Handles user login and JWT token generation
+--
+-- Endpoint: /auth.lc?action=login
+-- Method: POST
+-- Body: {"username":"admin","password":"password123"}
+--
+-- Response: {"status":"success","data":{"token":"...","user":{...}}}
+--
+-- See FUNCTION-REFERENCE.md for complete API documentation
+-- ============================================================================
+
+include "lib/db-functions.lc"
+
+on startup
+  put header "Content-Type: application/json"
+  
+  put $_GET["action"] into tAction
+  
+  switch tAction
+    case "login"
+      put handleLogin() into tResponse
+      break
+    default
+      put jsonError("Invalid action. Use: login") into tResponse
+  end switch
+  
+  put tResponse
+end startup
+
+startup
+
+
+-- ============================================================================
+-- LOGIN HANDLER
+-- ============================================================================
+
+-- Handle login request and issue JWT token
+-- Reads credentials from $_POST_RAW JSON body
+-- Returns: JSON response with token and user info
+function handleLogin
+  -- Get credentials from POST body
+  put $_POST_RAW into tPostData
+  
+  if tPostData is empty then
+    return jsonError("Username and password required")
+  end if
+  
+  -- Parse JSON
+  put JSONParser(tPostData) into tCredentials
+  
+  put tCredentials["username"] into tUsername
+  put tCredentials["password"] into tPassword
+  
+  if tUsername is empty or tPassword is empty then
+    return jsonError("Username and password required")
+  end if
+  
+  -- Connect to database
+  put dbConnect() into tConnectionID
+  if tConnectionID begins with "ERROR:" then
+    return jsonError(tConnectionID)
+  end if
+  
+  -- Query user
+  put "SELECT id, username, password_hash, name, email, is_active" into tSQL
+  put " FROM users" after tSQL
+  put " WHERE username = '" & sqlEscape(tUsername) & "'" after tSQL
+  put " AND is_active = 1" after tSQL
+  
+  put revDataFromQuery(tab, return, tConnectionID, tSQL) into tData
+  
+  revCloseDatabase tConnectionID
+  
+  if tData begins with "revdberr" or tData is empty then
+    return jsonError("Invalid username or password")
+  end if
+  
+  -- Parse user data
+  split tData by tab
+  
+  put tData[1] into tUserID
+  put tData[2] into tDBUsername
+  put tData[3] into tPasswordHash
+  put tData[4] into tName
+  put tData[5] into tEmail
+  
+  -- Verify password using LiveCode's messageDigest
+  -- This works with any database (MySQL, PostgreSQL, SQLite)
+  put messageDigest(tPassword, "SHA256") into tComputedHash
+  
+  if tComputedHash is not tPasswordHash then
+    return jsonError("Invalid username or password")
+  end if
+  
+  -- Create JWT token
+  put tUserID into tPayload["user_id"]
+  put tDBUsername into tPayload["username"]
+  put tName into tPayload["name"]
+  put tEmail into tPayload["email"]
+  
+  put createJWT(tPayload) into tToken
+  
+  if tToken begins with "ERROR:" then
+    return jsonError(tToken)
+  end if
+  
+  -- Return token and user info
+  put tToken into tResult["token"]
+  put tUserID into tResult["user"]["id"]
+  put tDBUsername into tResult["user"]["username"]
+  put tName into tResult["user"]["name"]
+  put tEmail into tResult["user"]["email"]
+  
+  return jsonSuccess(tResult)
+end handleLogin
+?>

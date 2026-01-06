@@ -1,0 +1,286 @@
+<?lc
+-- ============================================================================
+-- DATABASE & AUTHENTICATION HELPER FUNCTIONS
+-- LiveCode Server RPC API Template
+-- ============================================================================
+--
+-- All-in-one library containing:
+--   - Database connection and SQL utilities
+--   - JSON response formatting
+--   - JWT token creation and validation
+--   - Authentication helpers
+--
+-- Usage: include "lib/db-functions.lc" in all endpoint files
+--
+-- See FUNCTION-REFERENCE.md for complete API documentation
+-- ============================================================================
+
+-- Include PhotonJSON library for JSON handling
+include "photon-library.lc"
+
+
+-- ============================================================================
+-- DATABASE CONNECTION
+-- ============================================================================
+
+-- Connect to database
+-- Returns: Connection ID (number) on success, error string on failure
+function dbConnect
+  -- Database configuration
+  -- IMPORTANT: Move these to a config file in production
+  put "localhost" into tHost
+  put "database_name" into tDatabase
+  put "db_user" into tUser
+  put "db_password" into tPassword
+  
+  -- Open database connection
+  -- Default: MySQL (uncomment the database you're using)
+  
+  put revOpenDatabase("mysql", tHost, tDatabase, tUser, tPassword) into tConnectionID
+  -- put revOpenDatabase("postgresql", tHost, tDatabase, tUser, tPassword) into tConnectionID
+  -- put revOpenDatabase("sqlite", tDatabase) into tConnectionID
+  -- put revOpenDatabase("odbc", tHost, tDatabase, tUser, tPassword) into tConnectionID
+  
+  if tConnectionID is a number then
+    return tConnectionID
+  else
+    return "ERROR: Database connection failed -" && tConnectionID
+  end if
+end dbConnect
+
+
+-- ============================================================================
+-- JSON RESPONSE HELPERS
+-- ============================================================================
+
+-- Create JSON error response
+-- Parameters:
+--   pMessage (String) - Error message
+-- Returns: JSON string {"status":"error","message":"..."}
+function jsonError pMessage
+  put pMessage into tResult["message"]
+  put "error" into tResult["status"]
+  return JSONStringify(tResult)
+end jsonError
+
+
+-- Create JSON success response with data
+-- Parameters:
+--   pData (Any) - Data to return (array, string, number)
+-- Returns: JSON string {"status":"success","data":{...}}
+function jsonSuccess pData
+  put pData into tResult["data"]
+  put "success" into tResult["status"]
+  return JSONStringify(tResult)
+end jsonSuccess
+
+
+-- ============================================================================
+-- SQL UTILITIES
+-- ============================================================================
+
+-- Escape string for safe SQL queries
+-- Parameters:
+--   pString (String) - String to escape
+-- Returns: Escaped string safe for SQL
+-- Note: Prevents SQL injection by escaping special characters
+function sqlEscape pString
+  replace "\" with "\\" in pString
+  replace "'" with "\'" in pString
+  replace quote with "\" & quote in pString
+  replace return with "\n" in pString
+  replace tab with "\t" in pString
+  return pString
+end sqlEscape
+
+
+-- ============================================================================
+-- JWT TOKEN FUNCTIONS
+-- ============================================================================
+
+-- Get JWT secret key for signing tokens
+-- Returns: String - Secret key
+-- IMPORTANT: Change this in production! Use 32+ character random string
+function getJWTSecret
+  return "your-secret-key-change-in-production-min-32-chars"
+end getJWTSecret
+
+
+-- Get JWT token expiration time in seconds
+-- Returns: Number - Seconds until expiration (default: 1800 = 30 minutes)
+function getJWTExpiration
+  return 1800
+end getJWTExpiration
+
+
+-- Create signed JWT token
+-- Parameters:
+--   pPayload (Array) - User data to encode (user_id, username, etc.)
+-- Returns: JWT token string (header.payload.signature)
+-- Note: Automatically adds exp (expiration) and iat (issued at) claims
+function createJWT pPayload
+  -- Create header
+  put "HS256" into tHeader["alg"]
+  put "JWT" into tHeader["typ"]
+  
+  -- Add expiration and issued-at to payload
+  put the seconds into tNow
+  put tNow + getJWTExpiration() into pPayload["exp"]
+  put tNow into pPayload["iat"]
+  
+  -- Encode header and payload
+  put base64URLEncode(JSONStringify(tHeader)) into tEncodedHeader
+  put base64URLEncode(JSONStringify(pPayload)) into tEncodedPayload
+  
+  -- Create signature
+  put tEncodedHeader & "." & tEncodedPayload into tData
+  put createSignature(tData, getJWTSecret()) into tSignature
+  
+  if tSignature begins with "ERROR:" then
+    return tSignature
+  end if
+  
+  -- Return complete JWT
+  return tEncodedHeader & "." & tEncodedPayload & "." & tSignature
+end createJWT
+
+
+-- Verify JWT token signature and expiration
+-- Parameters:
+--   pToken (String) - JWT token to verify
+-- Returns: Payload array on success, error string on failure
+-- Note: Checks signature validity and token expiration
+function verifyJWT pToken
+  -- Split token into parts
+  set itemDelimiter to "."
+  if the number of items in pToken is not 3 then
+    return "ERROR: Invalid token format"
+  end if
+  
+  put item 1 of pToken into tEncodedHeader
+  put item 2 of pToken into tEncodedPayload
+  put item 3 of pToken into tReceivedSignature
+  
+  -- Verify signature
+  put tEncodedHeader & "." & tEncodedPayload into tData
+  put createSignature(tData, getJWTSecret()) into tExpectedSignature
+  
+  if tExpectedSignature begins with "ERROR:" then
+    return tExpectedSignature
+  end if
+  
+  if tReceivedSignature is not tExpectedSignature then
+    return "ERROR: Invalid signature"
+  end if
+  
+  -- Decode payload
+  put base64URLDecode(tEncodedPayload) into tPayloadJSON
+  put JSONParser(tPayloadJSON) into tPayload
+  
+  -- Check expiration
+  put the seconds into tNow
+  if tPayload["exp"] < tNow then
+    return "ERROR: Token expired"
+  end if
+  
+  return tPayload
+end verifyJWT
+
+
+-- Create HMAC-SHA256 signature
+-- Parameters:
+--   pData (String) - Data to sign
+--   pSecret (String) - Secret key
+-- Returns: Base64URL-encoded signature
+-- Note: Used internally by createJWT and verifyJWT
+function createSignature pData, pSecret
+  -- Use LiveCode's messageDigest with HMAC
+  put messageDigest(pData, "SHA256", pSecret) into tHash
+  
+  if tHash is empty then
+    return "ERROR: Failed to create signature"
+  end if
+  
+  return base64URLEncode(tHash)
+end createSignature
+
+
+-- Encode data to Base64URL format (URL-safe)
+-- Parameters:
+--   pData (String) - Data to encode
+-- Returns: Base64URL string (uses - and _ instead of + and /)
+-- Note: Used internally by JWT functions
+function base64URLEncode pData
+  put base64Encode(pData) into tEncoded
+  replace "+" with "-" in tEncoded
+  replace "/" with "_" in tEncoded
+  replace "=" with empty in tEncoded
+  return tEncoded
+end base64URLEncode
+
+
+-- Decode Base64URL format to original data
+-- Parameters:
+--   pData (String) - Base64URL string
+-- Returns: Decoded string
+-- Note: Used internally by JWT functions
+function base64URLDecode pData
+  put pData into tData
+  replace "-" with "+" in tData
+  replace "_" with "/" in tData
+  
+  -- Add padding if needed
+  put the length of tData mod 4 into tPadding
+  if tPadding > 0 then
+    repeat (4 - tPadding) times
+      put "=" after tData
+    end repeat
+  end if
+  
+  return base64Decode(tData)
+end base64URLDecode
+
+
+-- ============================================================================
+-- AUTHENTICATION HELPERS
+-- ============================================================================
+
+-- Extract JWT token from Authorization header
+-- Returns: Token string or empty
+-- Note: Handles "Bearer {token}" format and raw token
+function getAuthToken
+  put $_SERVER["HTTP_AUTHORIZATION"] into tAuthHeader
+  
+  if tAuthHeader is empty then
+    return empty
+  end if
+  
+  -- Check for "Bearer " prefix
+  if word 1 of tAuthHeader is "Bearer" then
+    return word 2 of tAuthHeader
+  end if
+  
+  return tAuthHeader
+end getAuthToken
+
+
+-- Validate JWT from Authorization header and return user data
+-- Returns: User data array on success, error string on failure
+-- Note: Combines getAuthToken() and verifyJWT() for convenience
+function validateJWT
+  put getAuthToken() into tToken
+  
+  if tToken is empty then
+    return "ERROR: No authorization token provided"
+  end if
+  
+  put verifyJWT(tToken) into tResult
+  
+  if tResult begins with "ERROR:" then
+    return tResult
+  end if
+  
+  -- Return user data from token
+  return tResult
+end validateJWT
+?>
