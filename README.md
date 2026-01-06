@@ -1,25 +1,39 @@
+# LiveCode Server RPC API Template
 
-# LiveCodeServer Database API
 Build secure APIs with LiveCode Server using JWT authentication. Works with MySQL, PostgreSQL, SQLite.
 
-## Files included:
+## What It Is
 
 **4 files to build a complete API:**
+
 1. **photon-library.lc** - JSON parsing
 2. **db-functions.lc** - Database, JWT, and auth functions
 3. **auth.lc** - Login endpoint (issues JWT tokens)
-4. **resource-template.lc** - CRUD template (adapt for each database table/resource)
+4. **resource-template.lc** - CRUD template (adapt for each database table)
 
+Include one library, call functions, done.
 
-## Quick setup
-1. Create a directory 'api' within your http fileserving folder (on linux this would usually be /var/www/, on MacOS /Library/WebServer/Documents/)
-2. create a folder 'lib' within the /api folder
-3. Copy the files `db-functions.lib` and `photon-library.lib` to the /api/lib/ directory
-4. Copy the `auth.lc` endpoint to /api
-5. Use the `resource-template.lc` file to create copies for each of your resources (tables) for common CRUD functionality. This means replacing the word `PLACEHOLDER` inside the template file with the table name. For unanticipated cross-table queries, just add these to the resource file as a hander which will be called with the `?action=<handler>[&param=<param>]` suffix to the endpont call, eg `/products.lc?action=read&id=1`
+## Quick Start
 
+```bash
+# 1. Copy files
+cp templates/* /var/www/api/lib/
+cp templates/auth.lc /var/www/api/
+cp templates/resource-template.lc /var/www/api/products.lc
 
-## Detailed Installation
+# 2. Customize for your table
+sed -i 's/PLACEHOLDER/products/g' products.lc
+
+# 3. Configure database (edit lib/db-functions.lc)
+nano /var/www/api/lib/db-functions.lc
+
+# 4. Test
+curl http://localhost/api/products.lc?action=list
+```
+
+**That's it.**
+
+## Installation
 
 **Need LiveCode Server?**
 - [Official Downloads](https://livecode.com/downloads/)
@@ -60,8 +74,11 @@ POST /products.lc?action=create     # Requires auth
 - `dbConnect()` - Connect to database
 - `sqlEscape()` - Prevent SQL injection
 - `jsonSuccess()` / `jsonError()` - Return JSON
-- `createJWT()` / `verifyJWT()` - JWT tokens
+- `generateJWT()` / `verifyJWT()` - JWT tokens
 - `validateJWT()` - Check auth header
+- `generateSalt()` / `hashPassword()` / `verifyPassword()` - Secure password hashing
+
+**Security:** Uses salted SHA256 password hashing. Migration support for upgrading from unsalted passwords.
 
 ## Architecture
 
@@ -76,11 +93,11 @@ POST /products.lc?action=create
 
 ## Features
 
-- JWT authentication (HMAC-SHA256)
-- Password hashing (database-portable)
-- SQL injection prevention
-- Works with MySQL, PostgreSQL, SQLite
-- Just 2 library files (photon + db-functions)
+- ✅ JWT authentication (HMAC-SHA256)
+- ✅ Password hashing (database-portable)
+- ✅ SQL injection prevention
+- ✅ Works with MySQL, PostgreSQL, SQLite
+- ✅ Just 2 library files (photon + db-functions)
 
 ## Structure
 
@@ -94,7 +111,7 @@ api/
 └── users.lc
 ```
 
-One modified resource-template file per database table.
+One file per database table.
 
 ## Configuration
 
@@ -112,8 +129,6 @@ function getJWTSecret
   return "change-this-in-production-min-32-chars"
 end getJWTSecret
 ```
-You can generate a random string of appropriate lenght in the terminal with `openssl rand -base64 64 | tr -d '\n'`
-The second part of the pipe is to ensure this comes out as 1 line with no line breaks
 
 ## Example
 
@@ -143,8 +158,9 @@ curl http://localhost/api/products.lc?action=list
 
 ## Support
 
-- [GitHub Issues](https://github.com/stam66/LiveCodeServer-database-API/issues)
+- [GitHub Issues](https://github.com/yourusername/livecode-rpc-api/issues)
 - [LiveCode Forums](https://forums.livecode.com)
 
 ## License
-Apache-2.0 - Free for commercial use.
+
+MIT - Free for commercial use.

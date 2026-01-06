@@ -283,4 +283,57 @@ function validateJWT
   -- Return user data from token
   return tResult
 end validateJWT
+
+
+-- ============================================================================
+-- PASSWORD HASHING (SALTED SHA256)
+-- ============================================================================
+
+-- Generate a random salt for password hashing
+-- Returns: 32-character hexadecimal salt
+-- Note: Uses LiveCode's randomBytes for cryptographic randomness
+function generateSalt
+  -- Generate 16 random bytes (128 bits)
+  put randomBytes(16) into tRandomBytes
+  
+  -- Convert to hexadecimal string
+  put empty into tSalt
+  repeat for each byte tByte in tRandomBytes
+    put baseConvert(byteToNum(tByte), 10, 16) into tHex
+    if the length of tHex is 1 then put "0" before tHex
+    put tHex after tSalt
+  end repeat
+  
+  return tSalt
+end generateSalt
+
+
+-- Hash password with salt using SHA256
+-- Parameters:
+--   pPassword (String) - Plain text password
+--   pSalt (String) - Salt string (32 hex characters)
+-- Returns: Hashed password (64 hex characters)
+-- Note: Uses SHA256(password + salt) for secure password storage
+function hashPassword pPassword, pSalt
+  -- Combine password and salt
+  put pPassword & pSalt into tSaltedPassword
+  
+  -- Hash with SHA256
+  put messageDigest(tSaltedPassword, "SHA256") into tHash
+  
+  return tHash
+end hashPassword
+
+
+-- Verify password against stored hash and salt
+-- Parameters:
+--   pPassword (String) - Plain text password to verify
+--   pStoredHash (String) - Stored password hash
+--   pStoredSalt (String) - Stored password salt
+-- Returns: Boolean - true if password matches, false otherwise
+-- Note: Convenience function for password verification
+function verifyPassword pPassword, pStoredHash, pStoredSalt
+  put hashPassword(pPassword, pStoredSalt) into tComputedHash
+  return (tComputedHash is pStoredHash)
+end verifyPassword
 ?>

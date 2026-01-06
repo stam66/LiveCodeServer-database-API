@@ -2,6 +2,8 @@
 
 This file contains database schema examples for MySQL, PostgreSQL, and SQLite.
 
+**Security Note:** All schemas include `password_salt` column for secure password storage. The API uses salted SHA256 hashing - never store plain text passwords. See `migration-add-salt.sql` if migrating from unsalted passwords.
+
 **Note:** All three schemas are functionally equivalent. Password hashing is done in LiveCode (not in SQL), making the code portable across all database types.
 
 ---
@@ -44,11 +46,12 @@ CREATE TABLE audit (
   INDEX idx_table (audit_table)
 );
 
--- Create users table
+-- Create users table with salted password support
 CREATE TABLE users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(100) NOT NULL UNIQUE,
-  password_hash VARCHAR(255) NOT NULL,
+  password_hash VARCHAR(64) NOT NULL,
+  password_salt VARCHAR(32) DEFAULT NULL,
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255),
   is_active TINYINT(1) DEFAULT 1,
@@ -110,11 +113,12 @@ CREATE TABLE audit (
 CREATE INDEX idx_timestamp ON audit(audit_timestamp);
 CREATE INDEX idx_table ON audit(audit_table);
 
--- Create users table
+-- Create users table with salted password support
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(100) NOT NULL UNIQUE,
-  password_hash VARCHAR(255) NOT NULL,
+  password_hash VARCHAR(64) NOT NULL,
+  password_salt VARCHAR(32) DEFAULT NULL,
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255),
   is_active SMALLINT DEFAULT 1,
@@ -179,11 +183,12 @@ CREATE TABLE audit (
 CREATE INDEX idx_timestamp ON audit(audit_timestamp);
 CREATE INDEX idx_table ON audit(audit_table);
 
--- Create users table
+-- Create users table with salted password support
 CREATE TABLE users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  password_salt TEXT DEFAULT NULL,
   name TEXT NOT NULL,
   email TEXT,
   is_active INTEGER DEFAULT 1,

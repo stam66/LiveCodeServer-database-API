@@ -255,6 +255,38 @@ revCloseDatabase tConnectionID
 
 ---
 
+## Password Hashing Functions
+
+### generateSalt()
+Generate cryptographic random salt (32 hex characters).
+```livecode
+put generateSalt() into tSalt
+-- Returns: "a3f9c82d1e5b7f..."
+```
+**Use:** Creating new user accounts
+
+### hashPassword(pPassword, pSalt)
+Hash password with salt using SHA256.
+```livecode
+put generateSalt() into tSalt
+put hashPassword("mypassword", tSalt) into tHash
+-- Store both tHash and tSalt in database
+```
+**Returns:** 64 character hex hash
+
+### verifyPassword(pPassword, pStoredHash, pStoredSalt)
+Verify password against stored hash and salt.
+```livecode
+if verifyPassword(tPassword, tStoredHash, tStoredSalt) then
+  -- Password correct
+end if
+```
+**Returns:** Boolean (true/false)
+
+**Security:** Always use salted passwords. The `auth.lc` template handles automatic migration from unsalted to salted passwords on successful login.
+
+---
+
 ## Complete Example
 
 ```livecode
@@ -327,10 +359,13 @@ Built-in LiveCode Server variables:
 | `sqlEscape(str)` | Escape SQL string | Escaped string |
 | `jsonSuccess(data)` | Success response | JSON string |
 | `jsonError(msg)` | Error response | JSON string |
-| `createJWT(payload)` | Create token | JWT string |
+| `generateJWT(id, username, name, expiry)` | Create token | JWT string |
 | `verifyJWT(token)` | Validate token | Payload or error |
 | `validateJWT()` | Check header | User data or error |
 | `getAuthToken()` | Extract token | Token or empty |
+| `generateSalt()` | Create random salt | 32 hex chars |
+| `hashPassword(pass, salt)` | Hash with salt | 64 hex chars |
+| `verifyPassword(pass, hash, salt)` | Check password | Boolean |
 
 ---
 

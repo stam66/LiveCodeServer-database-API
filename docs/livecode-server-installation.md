@@ -63,14 +63,20 @@ sudo systemctl reload nginx
 
 ## Part 2: Install LiveCode Server
 
-### Step 1: Download LiveCode Server
-Download the latest LiveCode Community Server from [livecode.com/downloads](https://livecode.com/downloads/) to your local machine.
+### Step 1:  
+**Download LiveCode Server**
+The last open source version of LiveCode Server was 9.6.3:
+Linux: https://archive.org/download/live-code-community-server-for-linux-all-versions/Linux%2064-Bit/LiveCodeCommunityServer-9_6_3-Linux-x86_64.zip  
+Windows: https://archive.org/download/livecode_20210906/Windows%2064-Bit/LiveCodeCommunityServer-9_6_3-Windows-x86_64.zip  
+MacOS: https://archive.org/download/livecode_20210906_1814/LiveCodeCommunityServer-9_6_3-Mac.zip  
 
-Unzip the downloaded file locally to get a folder like `LiveCodeCreateServer` or `LiveCodeCommunityServer-9_6_11-Linux-x64`.
+If you have a current subscription to LiveCode Create, download this from your login page.
+
+Unzip the downloaded file locally to get a folder like `LiveCodeCreateServer` or `LiveCodeCommunityServer-9_6_3-Linux-x64`.
 
 ### Step 2: Upload to Server via SFTP
 
-**Using Cyberduck (or similar):**
+**Using Cyberduck (or other FTP client that can provide SFTP):**
 1. Connect to your droplet via SFTP
    - Protocol: SFTP
    - Server: your-droplet-ip

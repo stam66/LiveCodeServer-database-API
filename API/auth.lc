@@ -1,16 +1,18 @@
 <?lc
 -- ============================================================================
--- AUTHENTICATION ENDPOINT
+-- AUTHENTICATION ENDPOINT WITH SALTED PASSWORDS
 -- LiveCode Server RPC API Template
 -- ============================================================================
 --
--- Handles user login and JWT token generation
+-- Handles user login and JWT token generation with secure password hashing
 --
 -- Endpoint: /auth.lc?action=login
 -- Method: POST
 -- Body: {"username":"admin","password":"password123"}
 --
 -- Response: {"status":"success","data":{"token":"...","user":{...}}}
+--
+-- SECURITY: Uses salted SHA256 password hashing for secure authentication
 --
 -- See FUNCTION-REFERENCE.md for complete API documentation
 -- ============================================================================
@@ -48,11 +50,15 @@ function handleLogin
   put $_POST_RAW into tPostData
   
   if tPostData is empty then
-    return jsonError("Username and password required")
+    return jsonError("No credentials provided")
   end if
   
-  -- Parse JSON
+  -- Parse JSON credentials
   put JSONParser(tPostData) into tCredentials
+  
+  if tCredentials is not an array then
+    return jsonError("Invalid JSON in request body")
+  end if
   
   put tCredentials["username"] into tUsername
   put tCredentials["password"] into tPassword
@@ -67,8 +73,8 @@ function handleLogin
     return jsonError(tConnectionID)
   end if
   
-  -- Query user
-  put "SELECT id, username, password_hash, name, email, is_active" into tSQL
+  -- Query user with salt
+  put "SELECT id, username, password_hash, password_salt, name, email, is_active" into tSQL
   put " FROM users" after tSQL
   put " WHERE username = '" & sqlEscape(tUsername) & "'" after tSQL
   put " AND is_active = 1" after tSQL
@@ -84,38 +90,55 @@ function handleLogin
   -- Parse user data
   split tData by tab
   
-  put tData[1] into tUserID
-  put tData[2] into tDBUsername
-  put tData[3] into tPasswordHash
-  put tData[4] into tName
-  put tData[5] into tEmail
+  put tUserID into tData[1]
+  put tDBUsername into tData[2]
+  put tPasswordHash into tData[3]
+  put tPasswordSalt into tData[4]
+  put tName into tData[5]
+  put tEmail into tData[6]
   
-  -- Verify password using LiveCode's messageDigest
-  -- This works with any database (MySQL, PostgreSQL, SQLite)
-  put messageDigest(tPassword, "SHA256") into tComputedHash
-  
-  if tComputedHash is not tPasswordHash then
-    return jsonError("Invalid username or password")
+  -- Verify password with salt
+  if tPasswordSalt is empty then
+    -- Legacy unsalted hash (for migration compatibility)
+    -- Generate salt and rehash on successful login
+    put messageDigest(tPassword, "SHA256") into tComputedHash
+    
+    if tComputedHash is tPasswordHash then
+      -- Valid legacy password - upgrade to salted version
+      put generateSalt() into tNewSalt
+      put hashPassword(tPassword, tNewSalt) into tNewHash
+      
+      -- Update database with salted password
+      put dbConnect() into tUpgradeConn
+      put "UPDATE users SET password_hash = '" & sqlEscape(tNewHash) & "'" into tUpgradeSQL
+      put ", password_salt = '" & sqlEscape(tNewSalt) & "'" after tUpgradeSQL
+      put " WHERE id = " & tUserID after tUpgradeSQL
+      revExecuteSQL tUpgradeConn, tUpgradeSQL
+      revCloseDatabase tUpgradeConn
+    else
+      return jsonError("Invalid username or password")
+    end if
+  else
+    -- Salted password verification
+    put hashPassword(tPassword, tPasswordSalt) into tComputedHash
+    
+    if tComputedHash is not tPasswordHash then
+      return jsonError("Invalid username or password")
+    end if
   end if
   
-  -- Create JWT token
-  put tUserID into tPayload["user_id"]
-  put tDBUsername into tPayload["username"]
-  put tName into tPayload["name"]
-  put tEmail into tPayload["email"]
+  -- Generate JWT token (30 minute expiry)
+  put generateJWT(tUserID, tDBUsername, tName, 1800) into tToken
   
-  put createJWT(tPayload) into tToken
+  -- Build user object for response
+  put tUserID into tUser["id"]
+  put tDBUsername into tUser["username"]
+  put tName into tUser["name"]
+  put tEmail into tUser["email"]
   
-  if tToken begins with "ERROR:" then
-    return jsonError(tToken)
-  end if
-  
-  -- Return token and user info
+  -- Return success with token
   put tToken into tResult["token"]
-  put tUserID into tResult["user"]["id"]
-  put tDBUsername into tResult["user"]["username"]
-  put tName into tResult["user"]["name"]
-  put tEmail into tResult["user"]["email"]
+  put tUser into tResult["user"]
   
   return jsonSuccess(tResult)
 end handleLogin
