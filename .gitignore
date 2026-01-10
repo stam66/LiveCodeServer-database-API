@@ -1,12 +1,212 @@
-# Xojo (formerly REALbasic and Real Studio)
+# ============================================================================
+# ECHOindications API - Git Ignore Rules
+# ============================================================================
 
-Builds*
-*.debug
-*.debug.app
-Debug*.exe
-Debug*/Debug*.exe
-Debug*/Debug*\ Libs
-*.rbuistate
-*.xojo_uistate
-*.obsolete*
-.DS_store
+# ============================================================================
+# CRITICAL: SECRET FILES - NEVER COMMIT THESE!
+# ============================================================================
+lib/settings.lc
+.env
+.env.local
+.env.*.local
+
+# ============================================================================
+# Database & Backup Files
+# ============================================================================
+*.sql
+*.sql.gz
+*.sql.bz2
+*.db
+*.sqlite
+*.sqlite3
+backups/
+dumps/
+
+# ============================================================================
+# Operating System Files
+# ============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================================================================
+# IDE & Editor Files
+# ============================================================================
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+Sessionx.vim
+.netrwhist
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea_modules/
+out/
+
+# Eclipse
+.classpath
+.project
+.settings/
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.loadpath
+.recommenders
+
+# NetBeans
+nbproject/private/
+build/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# ============================================================================
+# Log Files
+# ============================================================================
+*.log
+logs/
+*.log.*
+error_log
+access_log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ============================================================================
+# Temporary Files
+# ============================================================================
+tmp/
+temp/
+*.tmp
+*.temp
+*.cache
+.cache/
+
+# ============================================================================
+# Build & Compilation
+# ============================================================================
+dist/
+build/
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.class
+
+# ============================================================================
+# Package Managers
+# ============================================================================
+node_modules/
+bower_components/
+vendor/
+.bundle/
+
+# ============================================================================
+# Archive Files (Optional - remove if you want to version control archives)
+# ============================================================================
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# ============================================================================
+# Documentation Build Files (Optional)
+# ============================================================================
+docs/_build/
+site/
+
+# ============================================================================
+# Test Coverage
+# ============================================================================
+coverage/
+.nyc_output/
+*.cover
+.coverage
+htmlcov/
+
+# ============================================================================
+# Keep These Files (Override above rules)
+# ============================================================================
+# Template files are safe to commit
+!lib/secret.lc.example
+!lib/database.lc.example
+
+# README and documentation
+!README.md
+!*.md
+
+# Example/Sample files
+!examples/
+!samples/
