@@ -21,7 +21,34 @@ This is an **RPC-style API**, not REST:
 - Natural fit for LiveCode Server
 - Clear, explicit action names
 - Easy to add custom actions beyond CRUD
-- Simple testing (can use browser for GET requests)
+- Simple testing (can use browser for GET requests)  
+
+## 🔐 Security Features (Built-in)
+
+All endpoints include:
+
+### ✅ Security Headers
+- **X-Content-Type-Options**: Prevents MIME-sniffing
+- **X-Frame-Options**: Prevents clickjacking
+- **X-XSS-Protection**: Enables browser XSS protection
+- **CORS**: Cross-origin resource sharing configured
+- **CSP**: Content Security Policy
+
+### ✅ SQL Injection Prevention
+- `validateNumericID()` - Validates and sanitizes numeric IDs
+- `sqlEscape()` - Escapes SQL special characters
+
+### ✅ Authentication
+- JWT-based authentication with HMAC-SHA256
+- Constant-time password comparison (timing attack protection)
+- Token expiration (default: 30 minutes)
+- Salted password hashing with PBKDF2-like approach
+
+### ✅ Rate Limiting
+- IP-based rate limiting (configured per endpoint)
+- Automatic cleanup of expired limits
+- Proxy/load balancer support (X-Forwarded-For)  
+
 
 ## 📡 HTTP Methods in RPC APIs
 
@@ -312,32 +339,6 @@ curl -X GET "https://your-domain.com/API/audit.lc?action=by_record&table=product
 curl -X GET "https://your-domain.com/API/audit.lc?action=by_user&username=admin&limit=100" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
-
-## 🔐 Security Features (Built-in)
-
-All endpoints include:
-
-### ✅ Security Headers
-- **X-Content-Type-Options**: Prevents MIME-sniffing
-- **X-Frame-Options**: Prevents clickjacking
-- **X-XSS-Protection**: Enables browser XSS protection
-- **CORS**: Cross-origin resource sharing configured
-- **CSP**: Content Security Policy
-
-### ✅ SQL Injection Prevention
-- `validateNumericID()` - Validates and sanitizes numeric IDs
-- `sqlEscape()` - Escapes SQL special characters
-
-### ✅ Authentication
-- JWT-based authentication with HMAC-SHA256
-- Constant-time password comparison (timing attack protection)
-- Token expiration (default: 30 minutes)
-- Salted password hashing with PBKDF2-like approach
-
-### ✅ Rate Limiting
-- IP-based rate limiting (configured per endpoint)
-- Automatic cleanup of expired limits
-- Proxy/load balancer support (X-Forwarded-For)
 
 ## 📚 API Response Format
 
