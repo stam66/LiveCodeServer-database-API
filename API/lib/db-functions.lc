@@ -126,6 +126,41 @@ function dbConnect
 end dbConnect
 
 
+-- Get last inserted ID (database-agnostic)
+-- Parameters:
+--   pConnectionID (Number) - Active database connection ID
+-- Returns: Last inserted ID
+-- Note: Automatically uses correct function based on database type
+function getLastInsertID pConnectionID
+  put getDBType() into tType
+
+  switch tType
+    case "mysql"
+      put revDataFromQuery(,,pConnectionID,"SELECT LAST_INSERT_ID()") into tID
+      break
+
+    case "postgresql"
+      put revDataFromQuery(,,pConnectionID,"SELECT lastval()") into tID
+      break
+
+    case "sqlite"
+      put revDataFromQuery(,,pConnectionID,"SELECT last_insert_rowid()") into tID
+      break
+
+    case "odbc"
+      -- Assumes SQL Server for ODBC connections
+      -- Other ODBC databases may need different approaches
+      put revDataFromQuery(,,pConnectionID,"SELECT SCOPE_IDENTITY()") into tID
+      break
+
+    default
+      return "ERROR: Cannot get last insert ID for database type:" && tType
+  end switch
+
+  return tID
+end getLastInsertID
+
+
 -- ============================================================================
 -- JSON RESPONSE HELPERS
 -- ============================================================================
