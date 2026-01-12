@@ -13,6 +13,7 @@ lib/settings.lc
 # ============================================================================
 # Database & Backup Files
 # ============================================================================
+# Ignore actual database files and data dumps
 *.sql
 *.sql.gz
 *.sql.bz2
@@ -21,6 +22,10 @@ lib/settings.lc
 *.sqlite3
 backups/
 dumps/
+
+# BUT: Allow schema template files in sql/ directory
+!sql/*.sql
+!sql/**/*.sql
 
 # ============================================================================
 # Operating System Files

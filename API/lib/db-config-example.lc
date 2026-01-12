@@ -1,0 +1,273 @@
+-- ============================================================================
+-- DATABASE CONFIGURATION EXAMPLES
+-- LiveCode Server RPC API Template
+-- ============================================================================
+--
+-- This file shows configuration examples for all supported databases.
+-- Copy the configuration you need into db-functions.lc
+--
+-- DO NOT use this file directly - it's for reference only!
+--
+-- ============================================================================
+
+-- ============================================================================
+-- EXAMPLE 1: MySQL (Most Common)
+-- ============================================================================
+-- Recommended for: Web applications, shared hosting, production
+--
+-- Prerequisites:
+--   - MySQL 5.7+ or MariaDB 10.2+
+--   - Database created: CREATE DATABASE myapp_api;
+--   - Schema loaded: mysql -u root -p myapp_api < sql/schema-mysql.sql
+--
+-- Configuration:
+-- ============================================================================
+
+function getDBType
+  return "mysql"
+end getDBType
+
+function getDBHost
+  return "localhost"  -- Or IP address: "192.168.1.100"
+end getDBHost
+
+function getDBName
+  return "myapp_api"
+end getDBName
+
+function getDBUser
+  return "myapp_user"  -- Dedicated user, NOT root!
+end getDBUser
+
+function getDBPassword
+  return "SecurePassword123!"  -- Change this!
+end getDBPassword
+
+-- ============================================================================
+-- EXAMPLE 2: PostgreSQL
+-- ============================================================================
+-- Recommended for: Advanced queries, data integrity, large datasets
+--
+-- Prerequisites:
+--   - PostgreSQL 9.5+
+--   - Database created: CREATE DATABASE myapp_api;
+--   - Schema loaded: psql -U postgres myapp_api < sql/schema-postgresql.sql
+--
+-- Configuration:
+-- ============================================================================
+
+function getDBType
+  return "postgresql"
+end getDBType
+
+function getDBHost
+  return "localhost"  -- Or: "127.0.0.1" or remote IP
+end getDBHost
+
+function getDBName
+  return "myapp_api"
+end getDBName
+
+function getDBUser
+  return "postgres"  -- Or your PostgreSQL user
+end getDBUser
+
+function getDBPassword
+  return "postgres_password"  -- Change this!
+end getDBPassword
+
+-- ============================================================================
+-- EXAMPLE 3: SQLite (Serverless)
+-- ============================================================================
+-- Recommended for: Development, testing, embedded applications, low traffic
+--
+-- Prerequisites:
+--   - SQLite 3.x (usually pre-installed)
+--   - Database directory writable by web server
+--   - Schema loaded: sqlite3 /var/www/api/data/myapp.db < sql/schema-sqlite.sql
+--
+-- Configuration:
+-- ============================================================================
+
+function getDBType
+  return "sqlite"
+end getDBType
+
+function getDBHost
+  return ""  -- Not used for SQLite
+end getDBHost
+
+function getDBName
+  -- IMPORTANT: Must be full path to .db file
+  return "/var/www/api/data/myapp.db"
+  -- Ensure directory exists and is writable:
+  -- mkdir -p /var/www/api/data
+  -- chmod 755 /var/www/api/data
+  -- chmod 644 /var/www/api/data/myapp.db
+  -- chown www-data:www-data /var/www/api/data/myapp.db
+end getDBName
+
+function getDBUser
+  return ""  -- Not used for SQLite
+end getDBUser
+
+function getDBPassword
+  return ""  -- Not used for SQLite
+end getDBPassword
+
+-- ============================================================================
+-- EXAMPLE 4: Microsoft SQL Server (via ODBC)
+-- ============================================================================
+-- Recommended for: Windows environments, enterprise, legacy systems
+--
+-- Prerequisites:
+--   - SQL Server installed and running
+--   - ODBC Driver 17+ for SQL Server installed
+--   - DSN configured in ODBC Data Source Administrator
+--   - Database created and schema loaded (see sql/schema-sqlserver.sql)
+--
+-- See sql/ODBC-SETUP.md for complete setup instructions
+--
+-- Configuration:
+-- ============================================================================
+
+function getDBType
+  return "odbc"
+end getDBType
+
+function getDBHost
+  return "localhost"  -- Or remote server
+end getDBHost
+
+function getDBName
+  return "myapp_api"
+end getDBName
+
+function getDBUser
+  return "sa"  -- Or your SQL Server user
+end getDBUser
+
+function getDBPassword
+  return "SqlServerPassword!"  -- Change this!
+end getDBPassword
+
+function getODBCDSN
+  return "MyAppDatabase"  -- Your DSN name from ODBC Administrator
+end getODBCDSN
+
+-- ============================================================================
+-- EXAMPLE 5: MySQL via ODBC
+-- ============================================================================
+-- Use this if you need ODBC for MySQL (not recommended - use direct MySQL driver)
+--
+-- Prerequisites:
+--   - MySQL ODBC driver installed
+--   - DSN configured
+--
+-- Configuration:
+-- ============================================================================
+
+function getDBType
+  return "odbc"
+end getDBType
+
+function getODBCDSN
+  return "MySQLODBC"  -- Your MySQL ODBC DSN
+end getODBCDSN
+
+function getDBUser
+  return "mysql_user"
+end getDBUser
+
+function getDBPassword
+  return "mysql_password"
+end getDBPassword
+
+-- ============================================================================
+-- EXAMPLE 6: Oracle Database (via ODBC)
+-- ============================================================================
+-- Recommended for: Oracle environments, enterprise applications
+--
+-- Prerequisites:
+--   - Oracle Database installed
+--   - Oracle ODBC driver installed
+--   - DSN configured
+--   - See sql/ODBC-SETUP.md
+--
+-- Configuration:
+-- ============================================================================
+
+function getDBType
+  return "odbc"
+end getDBType
+
+function getODBCDSN
+  return "OracleODBC"  -- Your Oracle ODBC DSN
+end getODBCDSN
+
+function getDBUser
+  return "system"  -- Or your Oracle user
+end getDBUser
+
+function getDBPassword
+  return "oracle_password"
+end getDBPassword
+
+-- ============================================================================
+-- PRODUCTION BEST PRACTICES
+-- ============================================================================
+--
+-- 1. NEVER commit credentials to version control
+--    - Use environment variables
+--    - Use external config files (not in web root)
+--    - Use .gitignore to exclude config files
+--
+-- 2. Use dedicated database users
+--    - NOT root or sa
+--    - Grant only necessary permissions
+--    - One user per application
+--
+-- 3. Use strong passwords
+--    - Minimum 16 characters
+--    - Mix of upper, lower, numbers, symbols
+--    - Different for each environment (dev/staging/prod)
+--
+-- 4. Use SSL/TLS for remote connections
+--    - MySQL: Add "?ssl=true" to connection
+--    - PostgreSQL: sslmode=require
+--    - ODBC: Enable encryption in DSN
+--
+-- 5. Restrict database network access
+--    - Firewall rules
+--    - Bind to localhost if local
+--    - Use private network for remote
+--
+-- ============================================================================
+-- ENVIRONMENT-SPECIFIC CONFIGURATION
+-- ============================================================================
+--
+-- You can use different configs for dev/staging/production:
+--
+-- function getDBName
+--   if $SERVER_NAME contains "localhost" then
+--     return "myapp_dev"
+--   else if $SERVER_NAME contains "staging" then
+--     return "myapp_staging"
+--   else
+--     return "myapp_production"
+--   end if
+-- end getDBName
+--
+-- ============================================================================
+-- USING EXTERNAL CONFIG FILES (ADVANCED)
+-- ============================================================================
+--
+-- Store credentials outside web root:
+--
+-- function getDBPassword
+--   put URL "file:/etc/myapp/db.conf" into tConfig
+--   -- Parse config file and return password
+--   return tPassword
+-- end getDBPassword
+--
+-- ============================================================================

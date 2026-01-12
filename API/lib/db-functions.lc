@@ -15,22 +15,85 @@ include "settings.lc"
 -- DATABASE FUNCTIONS
 -- ============================================================================
 
--- Connect to MySQL database
+-- Connect to database (supports MySQL, PostgreSQL, SQLite, ODBC)
 -- Returns: Connection ID (number) or ERROR string
+-- Note: Automatically uses the database type configured in settings.lc
 function dbConnect
+  put getDBType() into tType
   put getDBHost() into tHost
   put getDBName() into tDatabase
   put getDBUser() into tUser
   put getDBPassword() into tPassword
-  
-  put revOpenDatabase("mysql", tHost, tDatabase, tUser, tPassword) into tConnectionID
-  
+
+  -- Open database connection based on type
+  switch tType
+    case "mysql"
+      put revOpenDatabase("mysql", tHost, tDatabase, tUser, tPassword) into tConnectionID
+      break
+
+    case "postgresql"
+      put revOpenDatabase("postgresql", tHost, tDatabase, tUser, tPassword) into tConnectionID
+      break
+
+    case "sqlite"
+      -- SQLite only needs the database path (file path)
+      put revOpenDatabase("sqlite", tDatabase) into tConnectionID
+      break
+
+    case "odbc"
+      -- ODBC can use either DSN or connection string
+      put getODBCDSN() into tDSN
+      -- Using DSN (recommended):
+      put revOpenDatabase("odbc", "DSN=" & tDSN & ";UID=" & tUser & ";PWD=" & tPassword) into tConnectionID
+      -- Alternative: Direct connection without DSN:
+      -- put revOpenDatabase("odbc", tHost, tDatabase, tUser, tPassword) into tConnectionID
+      break
+
+    default
+      return "ERROR: Unknown database type:" && tType
+  end switch
+
   if tConnectionID is a number then
     return tConnectionID
   else
     return "ERROR: Database connection failed -" && tConnectionID
   end if
 end dbConnect
+
+
+-- Get last inserted ID (database-agnostic)
+-- Parameters:
+--   pConnectionID (Number) - Active database connection ID
+-- Returns: Last inserted ID
+-- Note: Automatically uses correct function based on database type
+function getLastInsertID pConnectionID
+  put getDBType() into tType
+
+  switch tType
+    case "mysql"
+      put revDataFromQuery(,,pConnectionID,"SELECT LAST_INSERT_ID()") into tID
+      break
+
+    case "postgresql"
+      put revDataFromQuery(,,pConnectionID,"SELECT lastval()") into tID
+      break
+
+    case "sqlite"
+      put revDataFromQuery(,,pConnectionID,"SELECT last_insert_rowid()") into tID
+      break
+
+    case "odbc"
+      -- Assumes SQL Server for ODBC connections
+      -- Other ODBC databases may need different approaches
+      put revDataFromQuery(,,pConnectionID,"SELECT SCOPE_IDENTITY()") into tID
+      break
+
+    default
+      return "ERROR: Cannot get last insert ID for database type:" && tType
+  end switch
+
+  return tID
+end getLastInsertID
 
 
 -- ============================================================================

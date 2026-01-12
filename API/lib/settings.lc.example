@@ -6,32 +6,58 @@
 -- DO NOT commit this file to Git
 -- Add to .gitignore: lib/settings.lc
 --
--- CHANGE THE DATA BELOW TO YOUR DATA AND CHANGE EXTENSION FROM .txt TO .lc
+-- SETUP INSTRUCTIONS:
+-- 1. Copy this file: cp settings.lc.example settings.lc
+-- 2. Edit settings.lc with your actual credentials
+-- 3. Choose your database type in getDBType()
 -- ============================================================================
 
+-- Return database type
+-- Returns: String - "mysql", "postgresql", "sqlite", or "odbc"
+-- Supported databases:
+--   - "mysql" (default) - MySQL/MariaDB
+--   - "postgresql" - PostgreSQL
+--   - "sqlite" - SQLite (serverless, file-based)
+--   - "odbc" - ODBC (SQL Server, Oracle, DB2, Access, etc.)
+function getDBType
+  return "mysql"
+end getDBType
+
 -- Return database host
--- Returns: String - MySQL host address
+-- Returns: String - Database host address (not used for SQLite)
+-- Examples: "localhost", "127.0.0.1", "db.example.com"
 function getDBHost
   return "127.0.0.1"
 end getDBHost
 
 -- Return database name
 -- Returns: String - Database name
+-- For SQLite: Full path to .db file
+-- Example for SQLite: "/var/www/api/data/myapp.db"
 function getDBName
   return "YOUR-DATABASE-NAME"
 end getDBName
 
 -- Return database username
--- Returns: String - MySQL username
+-- Returns: String - Database username (not used for SQLite)
 function getDBUser
   return "YOUR-DATABASE-ADMIN-USERNAME"
 end getDBUser
 
 -- Return database password
--- Returns: String - MySQL password
+-- Returns: String - Database password (not used for SQLite)
 function getDBPassword
-  return "YOUR-DATABSE-ADMIN-PASSWORD"
+  return "YOUR-DATABASE-ADMIN-PASSWORD"
 end getDBPassword
+
+-- Return ODBC DSN name
+-- Returns: String - ODBC Data Source Name
+-- Only used when getDBType() returns "odbc"
+-- The DSN should be configured in your system's ODBC settings
+-- See sql/ODBC-SETUP.md for setup instructions
+function getODBCDSN
+  return "MyODBCDSN"
+end getODBCDSN
 
 
 

@@ -7,29 +7,49 @@
 -- Add to .gitignore: lib/settings.lc
 -- ============================================================================
 
+-- Return database type
+-- Returns: String - "mysql", "postgresql", "sqlite", or "odbc"
+-- Supported options:
+--   - "mysql" (default) - MySQL/MariaDB
+--   - "postgresql" - PostgreSQL
+--   - "sqlite" - SQLite (serverless, file-based)
+--   - "odbc" - ODBC (SQL Server, Oracle, DB2, Access, etc.)
+function getDBType
+  return "mysql"
+end getDBType
+
 -- Return database host
--- Returns: String - MySQL host address
+-- Returns: String - Database host address (not used for SQLite)
 function getDBHost
   return "127.0.0.1"
 end getDBHost
 
 -- Return database name
 -- Returns: String - Database name
+-- For SQLite: Full path to .db file (e.g., "/var/www/api/data/myapp.db")
 function getDBName
   return "echo_indications"
 end getDBName
 
 -- Return database username
--- Returns: String - MySQL username
+-- Returns: String - Database username (not used for SQLite)
 function getDBUser
   return "admin"
 end getDBUser
 
 -- Return database password
--- Returns: String - MySQL password
+-- Returns: String - Database password (not used for SQLite)
 function getDBPassword
   return "reject66"
 end getDBPassword
+
+-- Return ODBC DSN name
+-- Returns: String - ODBC Data Source Name
+-- Only used when getDBType() returns "odbc"
+-- The DSN should be configured in your system's ODBC settings
+function getODBCDSN
+  return "MyODBCDSN"
+end getODBCDSN
 
 
 
