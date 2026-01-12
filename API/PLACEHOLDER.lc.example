@@ -1,0 +1,428 @@
+<?lc
+-- ============================================================================
+-- GENERIC RPC API ENDPOINT TEMPLATE
+-- ============================================================================
+-- This is an RPC (Remote Procedure Call) API using action-based routing
+-- Example: /API/products.lc?action=list
+--
+-- Replace "PLACEHOLDER" with your table name (e.g., "products", "orders", "posts")
+-- Customize the actions and fields based on your database schema
+--
+-- HTTP METHOD USAGE:
+-- - Use GET for: list, read, search (read-only, idempotent operations)
+-- - Use POST for: create, update, delete (write operations with body data)
+-- - GET appears in logs/history, POST data is in request body (more secure)
+--
+-- SECURITY CONFIGURATION:
+-- - Set PUBLIC or PROTECTED for each action based on your requirements
+-- - PUBLIC: No authentication required (read-only recommended)
+-- - PROTECTED: Requires JWT authentication via requireAuth()
+--
+-- USAGE:
+-- 1. Copy this file to: YourTableName.lc
+-- 2. Replace all instances of PLACEHOLDER with your table name
+-- 3. Update database column names in SQL queries
+-- 4. Customize the actions you need (delete unused ones)
+-- 5. Add any custom business logic
+-- ============================================================================
+
+include "lib/db-functions.lc"
+
+on startup
+  -- Set security headers first (prevents XSS, clickjacking, etc.)
+  setSecurityHeaders
+  put header "Content-Type: application/json"
+
+  -- SECURITY CHOICE 1: Require authentication for ALL actions (like users.lc)
+  -- Uncomment the following line to protect all endpoints:
+  -- put requireAuth() into tAuthPayload
+
+  -- SECURITY CHOICE 2: Selective authentication per action (see switch statement below)
+  -- Leave the above line commented and protect individual actions
+
+  put $_GET["action"] into tAction
+  put $_GET["id"] into tID
+  put $_POST_RAW into tPostData
+
+  put dbConnect() into tConnectionID
+  if tConnectionID begins with "ERROR:" then
+    put jsonError(tConnectionID)
+    exit startup
+  end if
+
+  switch tAction
+    case "list"
+      -- PUBLIC: Get all records
+      -- HTTP Method: GET
+      put handleListPLACEHOLDER(tConnectionID) into tResponse
+      break
+
+    case "read"
+      -- PUBLIC: Get single record by ID
+      -- HTTP Method: GET
+      put handleReadPLACEHOLDER(tConnectionID, tID) into tResponse
+      break
+
+    case "create"
+      -- PROTECTED: Create new record (requires authentication)
+      -- HTTP Method: POST (data in body)
+      put requireAuth() into tAuthPayload
+      put handleCreatePLACEHOLDER(tConnectionID, tPostData, tAuthPayload) into tResponse
+      break
+
+    case "update"
+      -- PROTECTED: Update existing record (requires authentication)
+      -- HTTP Method: POST (data in body)
+      put requireAuth() into tAuthPayload
+      put handleUpdatePLACEHOLDER(tConnectionID, tPostData, tAuthPayload) into tResponse
+      break
+
+    case "delete"
+      -- PROTECTED: Delete record (requires authentication)
+      -- HTTP Method: POST (for security, even though no body needed)
+      put requireAuth() into tAuthPayload
+      put handleDeletePLACEHOLDER(tConnectionID, tID, tAuthPayload) into tResponse
+      break
+
+    case "search"
+      -- PUBLIC: Search records
+      -- HTTP Method: GET
+      put $_GET["keyword"] into tKeyword
+      put handleSearchPLACEHOLDER(tConnectionID, tKeyword) into tResponse
+      break
+
+    default
+      put jsonError("Invalid action. Use: list, read, create, update, delete, search") into tResponse
+  end switch
+
+  revCloseDatabase tConnectionID
+  put tResponse
+end startup
+
+startup
+
+
+-- ============================================================================
+-- LIST - Get all records
+-- PUBLIC: No authentication required
+-- ============================================================================
+function handleListPLACEHOLDER pConnectionID
+  -- Customize the SELECT query with your table's columns
+  -- Add WHERE clauses, JOINs, or ORDER BY as needed
+  put "SELECT id, name, description, status, created_at, updated_at FROM placeholder_table WHERE is_active = 1 ORDER BY created_at DESC" into tSQL
+
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tData
+
+  if tData begins with "revdberr" then
+    return jsonError("Database error occurred")
+  end if
+
+  -- Check if empty result
+  if tData is empty then
+    -- Return empty array instead of error
+    put empty into tRecords
+    return jsonSuccess(tRecords)
+  end if
+
+  -- Parse results into array
+  put 1 into tIndex
+  repeat for each line tLine in tData
+    split tLine by tab
+
+    -- Customize these field mappings based on your SELECT query
+    -- Array index [1] = first column, [2] = second column, etc.
+    put tLine[1] into tRecords[tIndex]["id"]
+    put tLine[2] into tRecords[tIndex]["name"]
+    put tLine[3] into tRecords[tIndex]["description"]
+    put tLine[4] into tRecords[tIndex]["status"]
+    put tLine[5] into tRecords[tIndex]["created_at"]
+    put tLine[6] into tRecords[tIndex]["updated_at"]
+
+    add 1 to tIndex
+  end repeat
+
+  return jsonSuccess(tRecords)
+end handleListPLACEHOLDER
+
+
+-- ============================================================================
+-- READ - Get single record by ID
+-- PUBLIC: No authentication required
+-- ============================================================================
+function handleReadPLACEHOLDER pConnectionID, pID
+  if pID is empty then
+    return jsonError("ID required")
+  end if
+
+  -- Validate ID to prevent SQL injection
+  put validateNumericID(pID) into tSafeID
+  if tSafeID is empty then
+    return jsonError("Invalid ID")
+  end if
+
+  -- Customize the SELECT query with your table's columns
+  put "SELECT id, name, description, status, created_at, updated_at FROM placeholder_table WHERE id =" && tSafeID into tSQL
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tData
+
+  if tData begins with "revdberr" or tData is empty then
+    return jsonError("Record not found")
+  end if
+
+  split tData by tab
+
+  -- Map database columns to response object
+  put tData[1] into tRecord["id"]
+  put tData[2] into tRecord["name"]
+  put tData[3] into tRecord["description"]
+  put tData[4] into tRecord["status"]
+  put tData[5] into tRecord["created_at"]
+  put tData[6] into tRecord["updated_at"]
+
+  return jsonSuccess(tRecord)
+end handleReadPLACEHOLDER
+
+
+-- ============================================================================
+-- CREATE - Create new record
+-- PROTECTED: Requires authentication
+-- ============================================================================
+function handleCreatePLACEHOLDER pConnectionID, pPostData, pAuthPayload
+  if pPostData is empty then
+    return jsonError("No data provided")
+  end if
+
+  -- Parse JSON input
+  put JSONParser(pPostData) into tData
+
+  if tData is not an array then
+    return jsonError("Invalid JSON format")
+  end if
+
+  -- Extract and validate fields
+  -- Customize based on your table schema
+  put tData["name"] into tName
+  put tData["description"] into tDescription
+  put tData["status"] into tStatus
+
+  -- Validate required fields
+  if tName is empty then
+    return jsonError("Name is required")
+  end if
+
+  -- Set default values if needed
+  if tStatus is empty then
+    put "active" into tStatus
+  end if
+
+  -- Get authenticated user info (if needed for created_by tracking)
+  put pAuthPayload["username"] into tCreatedBy
+
+  -- Escape inputs to prevent SQL injection
+  put sqlEscape(tName) into tSafeName
+  put sqlEscape(tDescription) into tSafeDescription
+  put sqlEscape(tStatus) into tSafeStatus
+  put sqlEscape(tCreatedBy) into tSafeCreatedBy
+
+  -- Build INSERT query
+  put "INSERT INTO placeholder_table (name, description, status, created_by, created_at) VALUES ('" into tSQL
+  put tSafeName & "', '" after tSQL
+  put tSafeDescription & "', '" after tSQL
+  put tSafeStatus & "', '" after tSQL
+  put tSafeCreatedBy & "', NOW())" after tSQL
+
+  revExecuteSQL pConnectionID, tSQL
+
+  if the result is not empty then
+    return jsonError("Failed to create record: " & the result)
+  end if
+
+  -- Get the newly created ID
+  put revDataFromQuery(tab, return, pConnectionID, "SELECT LAST_INSERT_ID()") into tNewID
+
+  -- Optional: Log to audit table
+  -- put "INSERT INTO audit (audit_user, audit_table, audit_primarykey, action) VALUES ('" & tSafeCreatedBy & "', 'placeholder_table', " & tNewID & ", 'INSERT')" into tAuditSQL
+  -- revExecuteSQL pConnectionID, tAuditSQL
+
+  put tNewID into tResult["id"]
+  put "Record created successfully" into tResult["message"]
+
+  return jsonSuccess(tResult)
+end handleCreatePLACEHOLDER
+
+
+-- ============================================================================
+-- UPDATE - Update existing record
+-- PROTECTED: Requires authentication
+-- ============================================================================
+function handleUpdatePLACEHOLDER pConnectionID, pPostData, pAuthPayload
+  if pPostData is empty then
+    return jsonError("No data provided")
+  end if
+
+  -- Parse JSON input
+  put JSONParser(pPostData) into tData
+
+  if tData is not an array then
+    return jsonError("Invalid JSON format")
+  end if
+
+  -- Get and validate ID
+  put tData["id"] into tID
+  put validateNumericID(tID) into tSafeID
+  if tSafeID is empty then
+    return jsonError("Invalid or missing ID")
+  end if
+
+  -- Check if record exists
+  put "SELECT id FROM placeholder_table WHERE id =" && tSafeID into tSQL
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tExists
+
+  if tExists is empty or tExists begins with "revdberr" then
+    return jsonError("Record not found")
+  end if
+
+  -- Extract fields to update
+  put tData["name"] into tName
+  put tData["description"] into tDescription
+  put tData["status"] into tStatus
+
+  -- Get authenticated user info
+  put pAuthPayload["username"] into tUpdatedBy
+
+  -- Build UPDATE query (only update provided fields)
+  put "UPDATE placeholder_table SET " into tSQL
+  put empty into tUpdates
+
+  if tName is not empty then
+    put "name = '" & sqlEscape(tName) & "'" into tUpdates
+  end if
+
+  if tDescription is not empty then
+    if tUpdates is not empty then put ", " after tUpdates
+    put "description = '" & sqlEscape(tDescription) & "'" after tUpdates
+  end if
+
+  if tStatus is not empty then
+    if tUpdates is not empty then put ", " after tUpdates
+    put "status = '" & sqlEscape(tStatus) & "'" after tUpdates
+  end if
+
+  -- Always update timestamp and updated_by
+  if tUpdates is not empty then put ", " after tUpdates
+  put "updated_at = NOW(), updated_by = '" & sqlEscape(tUpdatedBy) & "'" after tUpdates
+
+  if tUpdates is empty then
+    return jsonError("No fields to update")
+  end if
+
+  put tUpdates after tSQL
+  put " WHERE id =" && tSafeID after tSQL
+
+  revExecuteSQL pConnectionID, tSQL
+
+  if the result is not empty then
+    return jsonError("Failed to update record: " & the result)
+  end if
+
+  -- Optional: Log to audit table
+  -- put "INSERT INTO audit (audit_user, audit_table, audit_primarykey, action, changed_fields) VALUES ('" & sqlEscape(tUpdatedBy) & "', 'placeholder_table', " & tSafeID & ", 'UPDATE', '" & sqlEscape(tUpdates) & "')" into tAuditSQL
+  -- revExecuteSQL pConnectionID, tAuditSQL
+
+  put "Record updated successfully" into tResult["message"]
+  return jsonSuccess(tResult)
+end handleUpdatePLACEHOLDER
+
+
+-- ============================================================================
+-- DELETE - Delete record (soft delete recommended)
+-- PROTECTED: Requires authentication
+-- ============================================================================
+function handleDeletePLACEHOLDER pConnectionID, pID, pAuthPayload
+  if pID is empty then
+    return jsonError("ID required")
+  end if
+
+  -- Validate ID to prevent SQL injection
+  put validateNumericID(pID) into tSafeID
+  if tSafeID is empty then
+    return jsonError("Invalid ID")
+  end if
+
+  -- Check if record exists
+  put "SELECT id FROM placeholder_table WHERE id =" && tSafeID into tSQL
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tExists
+
+  if tExists is empty or tExists begins with "revdberr" then
+    return jsonError("Record not found")
+  end if
+
+  -- Get authenticated user info
+  put pAuthPayload["username"] into tDeletedBy
+
+  -- OPTION 1: Soft delete (recommended - preserves data)
+  put "UPDATE placeholder_table SET is_active = 0, deleted_at = NOW(), deleted_by = '" & sqlEscape(tDeletedBy) & "' WHERE id =" && tSafeID into tSQL
+
+  -- OPTION 2: Hard delete (permanent - use with caution)
+  -- put "DELETE FROM placeholder_table WHERE id =" && tSafeID into tSQL
+
+  revExecuteSQL pConnectionID, tSQL
+
+  if the result is not empty then
+    return jsonError("Failed to delete record: " & the result)
+  end if
+
+  -- Optional: Log to audit table
+  -- put "INSERT INTO audit (audit_user, audit_table, audit_primarykey, action) VALUES ('" & sqlEscape(tDeletedBy) & "', 'placeholder_table', " & tSafeID & ", 'DELETE')" into tAuditSQL
+  -- revExecuteSQL pConnectionID, tAuditSQL
+
+  put "Record deleted successfully" into tResult["message"]
+  return jsonSuccess(tResult)
+end handleDeletePLACEHOLDER
+
+
+-- ============================================================================
+-- SEARCH - Search records by keyword
+-- PUBLIC: No authentication required
+-- ============================================================================
+function handleSearchPLACEHOLDER pConnectionID, pKeyword
+  if pKeyword is empty then
+    return jsonError("Search keyword required")
+  end if
+
+  -- Escape keyword to prevent SQL injection
+  put sqlEscape(pKeyword) into tSafeKeyword
+
+  -- Build search query with LIKE for multiple columns
+  put "SELECT id, name, description, status, created_at FROM placeholder_table WHERE is_active = 1 AND (" into tSQL
+  put "name LIKE '%" & tSafeKeyword & "%' OR " after tSQL
+  put "description LIKE '%" & tSafeKeyword & "%')" after tSQL
+  put " ORDER BY created_at DESC LIMIT 100" after tSQL
+
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tData
+
+  if tData begins with "revdberr" then
+    return jsonError("Search failed")
+  end if
+
+  if tData is empty then
+    put empty into tResults
+    return jsonSuccess(tResults)
+  end if
+
+  -- Parse results
+  put 1 into tIndex
+  repeat for each line tLine in tData
+    split tLine by tab
+
+    put tLine[1] into tResults[tIndex]["id"]
+    put tLine[2] into tResults[tIndex]["name"]
+    put tLine[3] into tResults[tIndex]["description"]
+    put tLine[4] into tResults[tIndex]["status"]
+    put tLine[5] into tResults[tIndex]["created_at"]
+
+    add 1 to tIndex
+  end repeat
+
+  return jsonSuccess(tResults)
+end handleSearchPLACEHOLDER
+?>

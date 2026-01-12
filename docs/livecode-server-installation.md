@@ -7,6 +7,7 @@
 - MySQL/MariaDB installed and running
 - Root/sudo access
 - SFTP client (Cyberduck, FileZilla, or command line)
+- Optional but recommended: Commercial software - Lifeboat. Designed for Xojo web apps, but also sets up domains/SSL/database (MySQL or PostresSQL) without having to pay for this as an optional extra. Works very well with DigitalOcean droplets, and any other VPS.
 
 ---
 

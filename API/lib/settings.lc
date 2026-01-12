@@ -1,0 +1,50 @@
+<?lc
+-- ============================================================================
+-- DATABASE CONNECTION CONFIGURATION
+-- ============================================================================
+-- WARNING: This file contains your database credentials
+-- DO NOT commit this file to Git
+-- Add to .gitignore: lib/settings.lc
+-- ============================================================================
+
+-- Return database host
+-- Returns: String - MySQL host address
+function getDBHost
+  return "127.0.0.1"
+end getDBHost
+
+-- Return database name
+-- Returns: String - Database name
+function getDBName
+  return "echo_indications"
+end getDBName
+
+-- Return database username
+-- Returns: String - MySQL username
+function getDBUser
+  return "admin"
+end getDBUser
+
+-- Return database password
+-- Returns: String - MySQL password
+function getDBPassword
+  return "reject66"
+end getDBPassword
+
+
+
+-- ============================================================================
+-- SECRET KEY CONFIGURATION
+-- ============================================================================
+-- WARNING: This file contains your JWT secret key
+-- DO NOT commit this file to Git
+-- Add to .gitignore: lib/secret.lc
+-- ============================================================================
+
+-- Return JWT secret key for token signing
+-- SECURITY: This key must be kept secret!
+-- Returns: String - Secret key for HMAC-SHA256 signing
+function getJWTSecret
+  return "FSHHwdT58t9btVdSeW63wVMAjFQU92RM8Dl7jCjeuQMc39q+m0vuYDNHnvhdmfzuLVEryOKgJv+ilBKDFZFaYg=="
+end getJWTSecret
+?>

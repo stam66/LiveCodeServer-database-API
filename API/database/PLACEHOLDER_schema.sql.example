@@ -1,0 +1,72 @@
+-- ============================================================================
+-- GENERIC TABLE SCHEMA TEMPLATE
+-- ============================================================================
+-- Replace "placeholder_table" with your actual table name
+-- Customize fields based on your application requirements
+-- This schema includes common patterns for auditing and soft deletes
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS `placeholder_table` (
+  -- Primary Key
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+
+  -- Core Fields (customize these based on your needs)
+  `name` VARCHAR(255) NOT NULL,
+  `description` TEXT DEFAULT NULL,
+  `status` ENUM('active', 'inactive', 'pending', 'archived') DEFAULT 'active',
+
+  -- Add your custom fields here
+  -- Examples:
+  -- `email` VARCHAR(255) UNIQUE,
+  -- `price` DECIMAL(10,2),
+  -- `quantity` INT DEFAULT 0,
+  -- `category_id` INT,
+  -- `image_url` VARCHAR(500),
+
+  -- Audit Fields (who and when)
+  `created_by` VARCHAR(100) DEFAULT NULL,
+  `updated_by` VARCHAR(100) DEFAULT NULL,
+  `deleted_by` VARCHAR(100) DEFAULT NULL,
+
+  -- Timestamps
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` TIMESTAMP NULL DEFAULT NULL,
+
+  -- Soft Delete Flag (0 = deleted, 1 = active)
+  `is_active` TINYINT(1) DEFAULT 1,
+
+  -- Indexes for performance
+  KEY `idx_status` (`status`),
+  KEY `idx_is_active` (`is_active`),
+  KEY `idx_created_at` (`created_at`),
+  KEY `idx_name` (`name`)
+
+  -- Add foreign keys if needed
+  -- FOREIGN KEY (`category_id`) REFERENCES `categories`(`id`) ON DELETE SET NULL
+
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- OPTIONAL: Create indexes for full-text search
+-- ============================================================================
+-- ALTER TABLE `placeholder_table` ADD FULLTEXT KEY `idx_fulltext_search` (`name`, `description`);
+
+-- ============================================================================
+-- SAMPLE DATA (optional - for testing)
+-- ============================================================================
+-- INSERT INTO `placeholder_table` (`name`, `description`, `status`, `created_by`) VALUES
+-- ('Sample Item 1', 'This is a sample description', 'active', 'admin'),
+-- ('Sample Item 2', 'Another sample record', 'active', 'admin'),
+-- ('Sample Item 3', 'Third sample for testing', 'inactive', 'admin');
+
+-- ============================================================================
+-- USAGE NOTES
+-- ============================================================================
+-- 1. Replace "placeholder_table" with your actual table name
+-- 2. Customize fields in the "Core Fields" section
+-- 3. Add foreign keys if you have relationships with other tables
+-- 4. Create additional indexes based on your query patterns
+-- 5. Run this SQL in your MySQL/MariaDB database
+--
+-- Example: mysql -u username -p database_name < placeholder_schema.sql

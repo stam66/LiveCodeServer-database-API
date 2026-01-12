@@ -1,0 +1,52 @@
+<?lc
+-- ============================================================================
+-- DATABASE CONNECTION CONFIGURATION
+-- ============================================================================
+-- WARNING: This file contains your database credentials
+-- DO NOT commit this file to Git
+-- Add to .gitignore: lib/settings.lc
+--
+-- CHANGE THE DATA BELOW TO YOUR DATA AND CHANGE EXTENSION FROM .txt TO .lc
+-- ============================================================================
+
+-- Return database host
+-- Returns: String - MySQL host address
+function getDBHost
+  return "127.0.0.1"
+end getDBHost
+
+-- Return database name
+-- Returns: String - Database name
+function getDBName
+  return "YOUR-DATABASE-NAME"
+end getDBName
+
+-- Return database username
+-- Returns: String - MySQL username
+function getDBUser
+  return "YOUR-DATABASE-ADMIN-USERNAME"
+end getDBUser
+
+-- Return database password
+-- Returns: String - MySQL password
+function getDBPassword
+  return "YOUR-DATABSE-ADMIN-PASSWORD"
+end getDBPassword
+
+
+
+-- ============================================================================
+-- SECRET KEY CONFIGURATION
+-- ============================================================================
+-- WARNING: This file contains your JWT secret key
+-- DO NOT commit this file to Git
+-- Add to .gitignore: lib/secret.lc
+-- ============================================================================
+
+-- Return JWT secret key for token signing
+-- SECURITY: This key must be kept secret!
+-- Returns: String - Secret key for HMAC-SHA256 signing
+function getJWTSecret
+  return "YOUR-SECRET-KEY-GENERATED WITH TERMINAL: openssl rand -base64 64 | tr -d '\n'  "
+end getJWTSecret
+?>
