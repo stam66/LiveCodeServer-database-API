@@ -1,0 +1,335 @@
+<?lc
+-- ============================================================================
+-- GENERIC AUDIT TRAIL ENDPOINT
+-- ============================================================================
+-- This is an RPC (Remote Procedure Call) API for audit trail tracking
+-- Provides read-only access to audit logs for compliance and debugging
+--
+-- REQUIREMENTS:
+-- 1. Audit table in database (see database/audit_schema.sql.example)
+-- 2. Users table with username and name columns (for joining user info)
+-- 3. Your other endpoints should log to the audit table (see INTEGRATION below)
+--
+-- PROTECTED: All actions require JWT authentication
+--
+-- HTTP METHOD: GET (read-only operations)
+--
+-- ACTIONS:
+-- - recent: Get most recent audit entries across all tables
+-- - by_table: Filter audit entries by specific table name
+-- - by_record: Get complete history for a specific record
+-- - by_user: Get all actions performed by a specific user
+--
+-- USAGE EXAMPLES:
+-- GET /API/audit.lc?action=recent&limit=50
+-- GET /API/audit.lc?action=by_table&table=products&limit=100
+-- GET /API/audit.lc?action=by_record&table=products&record_id=123
+-- GET /API/audit.lc?action=by_user&username=admin&limit=50
+--
+-- INTEGRATION WITH OTHER ENDPOINTS:
+-- After CREATE/UPDATE/DELETE operations in other endpoints, log to audit:
+--
+-- Example in products.lc after creating a record:
+--   put "INSERT INTO audit (audit_user, audit_table, audit_primarykey, action, changed_fields)" into tAuditSQL
+--   put " VALUES ('" & sqlEscape(tUsername) & "', 'products', " & tNewID & ", 'INSERT', 'name,description')" after tAuditSQL
+--   revExecuteSQL pConnectionID, tAuditSQL
+--
+-- Example after updating:
+--   put "INSERT INTO audit (audit_user, audit_table, audit_primarykey, action, changed_fields)" into tAuditSQL
+--   put " VALUES ('" & sqlEscape(tUsername) & "', 'products', " & tID & ", 'UPDATE', 'price,quantity')" after tAuditSQL
+--   revExecuteSQL pConnectionID, tAuditSQL
+--
+-- Example after deleting:
+--   put "INSERT INTO audit (audit_user, audit_table, audit_primarykey, action)" into tAuditSQL
+--   put " VALUES ('" & sqlEscape(tUsername) & "', 'products', " & tID & ", 'DELETE')" after tAuditSQL
+--   revExecuteSQL pConnectionID, tAuditSQL
+--
+-- CUSTOMIZATION:
+-- This file works as-is for most projects. Optional customizations:
+-- 1. Add record_name column to show human-readable names (see OPTIONAL section below)
+-- 2. Change limit defaults or maximums
+-- 3. Add additional filtering options (date ranges, action types, etc.)
+-- ============================================================================
+
+include "lib/db-functions.lc"
+
+on startup
+  -- Set security headers first
+  setSecurityHeaders
+  put header "Content-Type: application/json"
+
+  -- PROTECTED: All audit actions require authentication
+  put requireAuth() into tAuthUser
+
+  put $_GET["action"] into tAction
+  put $_GET["limit"] into tLimit
+  put $_GET["table"] into tTable
+  put $_GET["record_id"] into tRecordID
+  put $_GET["username"] into tUsername
+
+  -- Default limit
+  if tLimit is empty then put 50 into tLimit
+
+  -- Validate limit to prevent SQL injection
+  put validateNumericID(tLimit) into tSafeLimit
+  if tSafeLimit is empty then
+    put jsonError("Invalid limit value")
+    exit startup
+  end if
+
+  -- Cap limit at reasonable maximum
+  if tSafeLimit > 1000 then put 1000 into tSafeLimit
+
+  put dbConnect() into tConnectionID
+  if tConnectionID begins with "ERROR:" then
+    put jsonError(tConnectionID)
+    exit startup
+  end if
+
+  switch tAction
+    case "recent"
+      -- Get recent audit entries (all tables)
+      -- HTTP Method: GET
+      put handleRecentAudit(tConnectionID, tSafeLimit) into tResponse
+      break
+    case "by_table"
+      -- Filter by specific table name
+      -- HTTP Method: GET
+      put handleAuditByTable(tConnectionID, tTable, tSafeLimit) into tResponse
+      break
+    case "by_record"
+      -- Get complete history for a specific record
+      -- HTTP Method: GET
+      put handleAuditByRecord(tConnectionID, tTable, tRecordID) into tResponse
+      break
+    case "by_user"
+      -- Get all actions by specific user
+      -- HTTP Method: GET
+      put handleAuditByUser(tConnectionID, tUsername, tSafeLimit) into tResponse
+      break
+    default
+      put jsonError("Invalid action. Use: recent, by_table, by_record, by_user") into tResponse
+  end switch
+
+  revCloseDatabase tConnectionID
+  put tResponse
+end startup
+
+startup
+
+
+-- ============================================================================
+-- RECENT - Get most recent audit entries across all tables
+-- ============================================================================
+function handleRecentAudit pConnectionID, pLimit
+  put "SELECT a.id, a.audit_timestamp, a.audit_user, u.name as user_name," into tSQL
+  put " a.audit_table, a.audit_primarykey, a.action, a.changed_fields" after tSQL
+  put " FROM audit a" after tSQL
+  put " LEFT JOIN users u ON a.audit_user = u.username" after tSQL
+  put " ORDER BY a.audit_timestamp DESC" after tSQL
+  put " LIMIT" && pLimit after tSQL
+
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tData
+
+  if tData begins with "revdberr" then
+    return jsonError("Failed to retrieve audit data")
+  end if
+
+  if tData is empty then
+    put empty into tAudit
+    return jsonSuccess(tAudit)
+  end if
+
+  put 1 into tIndex
+  repeat for each line tLine in tData
+    split tLine by tab
+
+    put tLine[1] into tAudit[tIndex]["id"]
+    put tLine[2] into tAudit[tIndex]["timestamp"]
+    put tLine[3] into tAudit[tIndex]["username"]
+    put tLine[4] into tAudit[tIndex]["user_name"]
+    put tLine[5] into tAudit[tIndex]["table"]
+    put tLine[6] into tAudit[tIndex]["record_id"]
+    put tLine[7] into tAudit[tIndex]["action"]
+    put tLine[8] into tAudit[tIndex]["changed_fields"]
+
+    add 1 to tIndex
+  end repeat
+
+  return jsonSuccess(tAudit)
+end handleRecentAudit
+
+
+-- ============================================================================
+-- BY_TABLE - Get audit entries filtered by table name
+-- ============================================================================
+function handleAuditByTable pConnectionID, pTable, pLimit
+  if pTable is empty then
+    return jsonError("Table name required")
+  end if
+
+  put "SELECT a.id, a.audit_timestamp, a.audit_user, u.name as user_name," into tSQL
+  put " a.audit_table, a.audit_primarykey, a.action, a.changed_fields" after tSQL
+  put " FROM audit a" after tSQL
+  put " LEFT JOIN users u ON a.audit_user = u.username" after tSQL
+  put " WHERE a.audit_table = '" & sqlEscape(pTable) & "'" after tSQL
+  put " ORDER BY a.audit_timestamp DESC" after tSQL
+  put " LIMIT" && pLimit after tSQL
+
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tData
+
+  if tData begins with "revdberr" then
+    return jsonError("Failed to retrieve audit data")
+  end if
+
+  if tData is empty then
+    put empty into tAudit
+    return jsonSuccess(tAudit)
+  end if
+
+  put 1 into tIndex
+  repeat for each line tLine in tData
+    split tLine by tab
+
+    put tLine[1] into tAudit[tIndex]["id"]
+    put tLine[2] into tAudit[tIndex]["timestamp"]
+    put tLine[3] into tAudit[tIndex]["username"]
+    put tLine[4] into tAudit[tIndex]["user_name"]
+    put tLine[5] into tAudit[tIndex]["table"]
+    put tLine[6] into tAudit[tIndex]["record_id"]
+    put tLine[7] into tAudit[tIndex]["action"]
+    put tLine[8] into tAudit[tIndex]["changed_fields"]
+
+    add 1 to tIndex
+  end repeat
+
+  return jsonSuccess(tAudit)
+end handleAuditByTable
+
+
+-- ============================================================================
+-- BY_RECORD - Get complete audit history for a specific record
+-- ============================================================================
+function handleAuditByRecord pConnectionID, pTable, pRecordID
+  if pTable is empty or pRecordID is empty then
+    return jsonError("Table name and record ID required")
+  end if
+
+  -- Validate record ID to prevent SQL injection
+  put validateNumericID(pRecordID) into tSafeID
+  if tSafeID is empty then
+    return jsonError("Invalid record ID")
+  end if
+
+  put "SELECT a.id, a.audit_timestamp, a.audit_user, u.name as user_name," into tSQL
+  put " a.audit_table, a.audit_primarykey, a.action, a.changed_fields" after tSQL
+  put " FROM audit a" after tSQL
+  put " LEFT JOIN users u ON a.audit_user = u.username" after tSQL
+  put " WHERE a.audit_table = '" & sqlEscape(pTable) & "'" after tSQL
+  put " AND a.audit_primarykey =" && tSafeID after tSQL
+  put " ORDER BY a.audit_timestamp DESC" after tSQL
+
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tData
+
+  if tData begins with "revdberr" then
+    return jsonError("Failed to retrieve audit data")
+  end if
+
+  if tData is empty then
+    put empty into tAudit
+    return jsonSuccess(tAudit)
+  end if
+
+  put 1 into tIndex
+  repeat for each line tLine in tData
+    split tLine by tab
+
+    put tLine[1] into tAudit[tIndex]["id"]
+    put tLine[2] into tAudit[tIndex]["timestamp"]
+    put tLine[3] into tAudit[tIndex]["username"]
+    put tLine[4] into tAudit[tIndex]["user_name"]
+    put tLine[5] into tAudit[tIndex]["table"]
+    put tLine[6] into tAudit[tIndex]["record_id"]
+    put tLine[7] into tAudit[tIndex]["action"]
+    put tLine[8] into tAudit[tIndex]["changed_fields"]
+
+    add 1 to tIndex
+  end repeat
+
+  return jsonSuccess(tAudit)
+end handleAuditByRecord
+
+
+-- ============================================================================
+-- BY_USER - Get all audit entries for a specific user
+-- ============================================================================
+function handleAuditByUser pConnectionID, pUsername, pLimit
+  if pUsername is empty then
+    return jsonError("Username required")
+  end if
+
+  put "SELECT a.id, a.audit_timestamp, a.audit_user, u.name as user_name," into tSQL
+  put " a.audit_table, a.audit_primarykey, a.action, a.changed_fields" after tSQL
+  put " FROM audit a" after tSQL
+  put " LEFT JOIN users u ON a.audit_user = u.username" after tSQL
+  put " WHERE a.audit_user = '" & sqlEscape(pUsername) & "'" after tSQL
+  put " ORDER BY a.audit_timestamp DESC" after tSQL
+  put " LIMIT" && pLimit after tSQL
+
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tData
+
+  if tData begins with "revdberr" then
+    return jsonError("Failed to retrieve audit data")
+  end if
+
+  if tData is empty then
+    put empty into tAudit
+    return jsonSuccess(tAudit)
+  end if
+
+  put 1 into tIndex
+  repeat for each line tLine in tData
+    split tLine by tab
+
+    put tLine[1] into tAudit[tIndex]["id"]
+    put tLine[2] into tAudit[tIndex]["timestamp"]
+    put tLine[3] into tAudit[tIndex]["username"]
+    put tLine[4] into tAudit[tIndex]["user_name"]
+    put tLine[5] into tAudit[tIndex]["table"]
+    put tLine[6] into tAudit[tIndex]["record_id"]
+    put tLine[7] into tAudit[tIndex]["action"]
+    put tLine[8] into tAudit[tIndex]["changed_fields"]
+
+    add 1 to tIndex
+  end repeat
+
+  return jsonSuccess(tAudit)
+end handleAuditByUser
+
+
+-- ============================================================================
+-- OPTIONAL: ADD RECORD NAMES FOR BETTER READABILITY
+-- ============================================================================
+-- If you want to show human-readable names instead of just IDs, add a
+-- record_name column to your queries. Example:
+--
+-- function handleRecentAuditWithNames pConnectionID, pLimit
+--   put "SELECT a.id, a.audit_timestamp, a.audit_user, u.name as user_name," into tSQL
+--   put " a.audit_table, a.audit_primarykey, a.action, a.changed_fields," after tSQL
+--   put " CASE" after tSQL
+--   put "   WHEN a.audit_table = 'products' THEN (SELECT name FROM products WHERE id = a.audit_primarykey)" after tSQL
+--   put "   WHEN a.audit_table = 'orders' THEN (SELECT CONCAT('Order #', id) FROM orders WHERE id = a.audit_primarykey)" after tSQL
+--   put "   WHEN a.audit_table = 'customers' THEN (SELECT name FROM customers WHERE id = a.audit_primarykey)" after tSQL
+--   put "   ELSE 'Unknown'" after tSQL
+--   put " END as record_name" after tSQL
+--   put " FROM audit a" after tSQL
+--   put " LEFT JOIN users u ON a.audit_user = u.username" after tSQL
+--   put " ORDER BY a.audit_timestamp DESC" after tSQL
+--   put " LIMIT" && pLimit after tSQL
+--
+--   -- Then in the repeat loop, add:
+--   -- put tLine[9] into tAudit[tIndex]["record_name"]
+-- end handleRecentAuditWithNames
+--
+-- This is optional and specific to your table structure.
+?>

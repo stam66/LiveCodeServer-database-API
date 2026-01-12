@@ -1,0 +1,82 @@
+-- ============================================================================
+-- Audit Trail Table Schema
+-- ============================================================================
+-- This table tracks all changes to data across your application
+-- Provides compliance, debugging, and accountability
+--
+-- USAGE:
+-- 1. Run this SQL to create the audit table
+-- 2. Integrate audit logging into your CRUD endpoints
+-- 3. Use audit.lc.example to query audit logs
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS `audit` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+
+  -- Who made the change
+  `audit_user` VARCHAR(100) NOT NULL,
+
+  -- What table was affected
+  `audit_table` VARCHAR(100) NOT NULL,
+
+  -- Which record was affected (the primary key value)
+  `audit_primarykey` INT NOT NULL,
+
+  -- What action was performed (INSERT, UPDATE, DELETE)
+  `action` ENUM('INSERT', 'UPDATE', 'DELETE') NOT NULL,
+
+  -- Which fields were changed (comma-separated list)
+  -- Example: "name,email,status"
+  `changed_fields` TEXT DEFAULT NULL,
+
+  -- When the change occurred
+  `audit_timestamp` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  -- Indexes for performance
+  KEY `idx_user` (`audit_user`),
+  KEY `idx_table` (`audit_table`),
+  KEY `idx_table_record` (`audit_table`, `audit_primarykey`),
+  KEY `idx_timestamp` (`audit_timestamp`)
+
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- INTEGRATION EXAMPLES
+-- ============================================================================
+
+-- After INSERT in products.lc:
+-- INSERT INTO audit (audit_user, audit_table, audit_primarykey, action, changed_fields)
+-- VALUES ('admin', 'products', 123, 'INSERT', 'name,description,price');
+
+-- After UPDATE in products.lc:
+-- INSERT INTO audit (audit_user, audit_table, audit_primarykey, action, changed_fields)
+-- VALUES ('admin', 'products', 123, 'UPDATE', 'price,quantity');
+
+-- After DELETE in products.lc:
+-- INSERT INTO audit (audit_user, audit_table, audit_primarykey, action)
+-- VALUES ('admin', 'products', 123, 'DELETE');
+
+-- ============================================================================
+-- MAINTENANCE
+-- ============================================================================
+
+-- Old audit records can be archived periodically:
+-- DELETE FROM audit WHERE audit_timestamp < DATE_SUB(NOW(), INTERVAL 1 YEAR);
+
+-- Or move to archive table:
+-- INSERT INTO audit_archive SELECT * FROM audit WHERE audit_timestamp < DATE_SUB(NOW(), INTERVAL 1 YEAR);
+-- DELETE FROM audit WHERE audit_timestamp < DATE_SUB(NOW(), INTERVAL 1 YEAR);
+
+-- ============================================================================
+-- COMPLIANCE NOTES
+-- ============================================================================
+-- This audit trail helps with:
+-- - GDPR Article 30 (Records of processing activities)
+-- - HIPAA 164.308(a)(1)(ii)(D) (Information system activity review)
+-- - SOX Section 404 (Management assessment of internal controls)
+-- - PCI DSS Requirement 10 (Track and monitor all access to network resources)
+--
+-- Retention periods vary by regulation:
+-- - HIPAA: 6 years minimum
+-- - GDPR: As needed for legal requirements
+-- - PCI DSS: 1 year minimum (3 months immediately available)

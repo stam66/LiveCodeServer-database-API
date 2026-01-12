@@ -134,62 +134,7 @@ switch tAction
 end switch
 ```
 
-### 4. Configure Database Connection
-
-The API supports multiple database types through `API/lib/settings.lc`:
-
-```bash
-# Copy settings template
-cp API/lib/settings.lc.example API/lib/settings.lc
-
-# Edit settings.lc to configure your database
-```
-
-**Supported Databases:**
-- **MySQL/MariaDB** (default) - Most common choice
-- **PostgreSQL** - Advanced features, best for complex queries
-- **SQLite** - Serverless, file-based, perfect for development
-- **ODBC** - SQL Server, Oracle, DB2, Access, and others
-
-**Configure in `API/lib/settings.lc`:**
-
-```livecode
--- Choose your database type
-function getDBType
-  return "mysql"  -- Options: "mysql", "postgresql", "sqlite", "odbc"
-end getDBType
-
--- Set connection details
-function getDBHost
-  return "127.0.0.1"  -- Not used for SQLite
-end getDBHost
-
-function getDBName
-  return "your_database_name"  -- For SQLite: "/path/to/database.db"
-end getDBName
-
-function getDBUser
-  return "your_username"  -- Not used for SQLite
-end getDBUser
-
-function getDBPassword
-  return "your_password"  -- Not used for SQLite
-end getDBPassword
-
--- For ODBC only
-function getODBCDSN
-  return "MyODBCDSN"  -- Your ODBC DSN name
-end getODBCDSN
-```
-
-**Database Schema Files:**
-- MySQL: [`sql/schema-mysql.sql`](sql/schema-mysql.sql)
-- PostgreSQL: [`sql/schema-postgresql.sql`](sql/schema-postgresql.sql)
-- SQLite: [`sql/schema-sqlite.sql`](sql/schema-sqlite.sql)
-- SQL Server: [`sql/schema-sqlserver.sql`](sql/schema-sqlserver.sql)
-- ODBC Setup Guide: [`sql/ODBC-SETUP.md`](sql/ODBC-SETUP.md)
-
-### 5. Test Your Endpoint
+### 4. Test Your Endpoint
 
 ```bash
 # Test GET endpoint (list - no auth needed)
