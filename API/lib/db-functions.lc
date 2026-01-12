@@ -20,27 +20,104 @@ include "photon-library.lc"
 
 
 -- ============================================================================
+-- DATABASE CONFIGURATION
+-- ============================================================================
+
+-- Get database type
+-- Returns: String - "mysql", "postgresql", "sqlite", or "odbc"
+-- IMPORTANT: Change this to match your database
+function getDBType
+  return "mysql"
+  -- Supported options:
+  -- return "mysql"
+  -- return "postgresql"
+  -- return "sqlite"
+  -- return "odbc"
+end getDBType
+
+
+-- Get database host
+-- Returns: String - Database host (not used for SQLite)
+function getDBHost
+  return "localhost"
+end getDBHost
+
+
+-- Get database name
+-- Returns: String - Database name (for SQLite: full path to .db file)
+function getDBName
+  return "database_name"
+  -- For SQLite, use full path:
+  -- return "/var/www/api/data/myapp.db"
+end getDBName
+
+
+-- Get database username
+-- Returns: String - Database username (not used for SQLite)
+function getDBUser
+  return "db_user"
+end getDBUser
+
+
+-- Get database password
+-- Returns: String - Database password (not used for SQLite)
+function getDBPassword
+  return "db_password"
+end getDBPassword
+
+
+-- Get DSN for ODBC connections
+-- Returns: String - ODBC DSN name
+function getODBCDSN
+  return "MyODBCDSN"
+  -- The DSN should be configured in your system's ODBC settings
+  -- Example: "MySQL ODBC Driver", "PostgreSQL ODBC", etc.
+end getODBCDSN
+
+
+-- ============================================================================
 -- DATABASE CONNECTION
 -- ============================================================================
 
 -- Connect to database
 -- Returns: Connection ID (number) on success, error string on failure
+-- Note: Automatically uses the database type configured in getDBType()
 function dbConnect
-  -- Database configuration
-  -- IMPORTANT: Move these to a config file in production
-  put "localhost" into tHost
-  put "database_name" into tDatabase
-  put "db_user" into tUser
-  put "db_password" into tPassword
-  
-  -- Open database connection
-  -- Default: MySQL (uncomment the database you're using)
-  
-  put revOpenDatabase("mysql", tHost, tDatabase, tUser, tPassword) into tConnectionID
-  -- put revOpenDatabase("postgresql", tHost, tDatabase, tUser, tPassword) into tConnectionID
-  -- put revOpenDatabase("sqlite", tDatabase) into tConnectionID
-  -- put revOpenDatabase("odbc", tHost, tDatabase, tUser, tPassword) into tConnectionID
-  
+  -- Get database configuration
+  put getDBType() into tType
+  put getDBHost() into tHost
+  put getDBName() into tDatabase
+  put getDBUser() into tUser
+  put getDBPassword() into tPassword
+
+  -- Open database connection based on type
+  switch tType
+    case "mysql"
+      put revOpenDatabase("mysql", tHost, tDatabase, tUser, tPassword) into tConnectionID
+      break
+
+    case "postgresql"
+      put revOpenDatabase("postgresql", tHost, tDatabase, tUser, tPassword) into tConnectionID
+      break
+
+    case "sqlite"
+      -- SQLite only needs the database path (file path)
+      put revOpenDatabase("sqlite", tDatabase) into tConnectionID
+      break
+
+    case "odbc"
+      -- ODBC can use either DSN or connection string
+      put getODBCDSN() into tDSN
+      -- Using DSN (recommended):
+      put revOpenDatabase("odbc", "DSN=" & tDSN & ";UID=" & tUser & ";PWD=" & tPassword) into tConnectionID
+      -- Alternative: Direct connection without DSN:
+      -- put revOpenDatabase("odbc", tHost, tDatabase, tUser, tPassword) into tConnectionID
+      break
+
+    default
+      return "ERROR: Unknown database type:" && tType
+  end switch
+
   if tConnectionID is a number then
     return tConnectionID
   else

@@ -1,6 +1,6 @@
 # LiveCode Server RPC API Template
 
-Build secure APIs with LiveCode Server using JWT authentication. Works with MySQL, PostgreSQL, SQLite.
+Build secure APIs with LiveCode Server using JWT authentication. Works with MySQL, PostgreSQL, SQLite, and ODBC (SQL Server, Oracle, etc.).
 
 ## What It Is
 
@@ -16,19 +16,31 @@ Include one library, call functions, done.
 ## Quick Start
 
 ```bash
-# 1. Copy files
-cp templates/* /var/www/api/lib/
-cp templates/auth.lc /var/www/api/
-cp templates/resource-template.lc /var/www/api/products.lc
+# 1. Choose your database and run the SQL schema
+# MySQL:
+mysql -u root -p < sql/schema-mysql.sql
 
-# 2. Customize for your table
-sed -i 's/PLACEHOLDER/products/g' products.lc
+# PostgreSQL:
+psql -U postgres < sql/schema-postgresql.sql
 
-# 3. Configure database (edit lib/db-functions.lc)
-nano /var/www/api/lib/db-functions.lc
+# SQLite:
+sqlite3 /var/www/api/data/myapp.db < sql/schema-sqlite.sql
 
-# 4. Test
-curl http://localhost/api/products.lc?action=list
+# SQL Server (ODBC):
+sqlcmd -S localhost -U sa -P password -i sql/schema-sqlserver.sql
+
+# 2. Configure database connection (edit API/lib/db-functions.lc)
+# Change these functions:
+#   - getDBType() - Set to "mysql", "postgresql", "sqlite", or "odbc"
+#   - getDBHost() - Your database host
+#   - getDBName() - Your database name
+#   - getDBUser() - Your database username
+#   - getDBPassword() - Your database password
+# See API/lib/db-config-example.lc for complete examples
+
+# 3. Test
+curl http://localhost/api/auth.lc?action=login \
+  -d '{"username":"admin","password":"password123"}'
 ```
 
 **That's it.**
@@ -40,8 +52,10 @@ curl http://localhost/api/products.lc?action=list
 - [macOS Guide](https://forums.livecode.com/viewtopic.php?f=8&t=37853&p=222987#p222987) (forum post)
 - [Ubuntu/nginx Complete Setup](docs/livecode-server-installation.md) (with MySQL & SSL)
 
-**Database Setup:**  
-[Database Schemas](docs/database-setup.md) for MySQL, PostgreSQL, SQLite
+**Database Setup:**
+- [Database Setup Guide](docs/database-setup.md) - Schemas for MySQL, PostgreSQL, SQLite
+- [ODBC Setup Guide](sql/ODBC-SETUP.md) - Setup for SQL Server, Oracle, and other ODBC databases
+- [SQL Files](sql/) - Ready-to-use schema files for all databases
 
 **Detailed Setup:**  
 [Step-by-Step Guide](docs/QUICK-START.md)
@@ -94,34 +108,73 @@ POST /products.lc?action=create
 ## Features
 
 - ✅ JWT authentication (HMAC-SHA256)
-- ✅ Password hashing (database-portable)
+- ✅ Password hashing with iterations (PBKDF2-like, database-portable)
 - ✅ SQL injection prevention
-- ✅ Works with MySQL, PostgreSQL, SQLite
+- ✅ **Multi-database support:** MySQL, PostgreSQL, SQLite, ODBC (SQL Server, Oracle, DB2, Access, etc.)
+- ✅ **Easy database switching:** Change one function to switch databases
+- ✅ Ready-to-use SQL schema files for all databases
 - ✅ Just 2 library files (photon + db-functions)
 
 ## Structure
 
 ```
-api/
-├── lib/
-│   ├── photon-library.lc
-│   └── db-functions.lc
-├── auth.lc
-├── products.lc
-└── users.lc
+LiveCodeServer-database-API/
+├── API/
+│   ├── lib/
+│   │   ├── photon-library.lc       # JSON parsing
+│   │   ├── db-functions.lc         # Database & auth functions
+│   │   └── db-config-example.lc    # Configuration examples
+│   ├── auth.lc                     # Login endpoint
+│   └── resource-template.lc        # CRUD template
+├── sql/
+│   ├── schema-mysql.sql            # MySQL schema
+│   ├── schema-postgresql.sql       # PostgreSQL schema
+│   ├── schema-sqlite.sql           # SQLite schema
+│   ├── schema-sqlserver.sql        # SQL Server schema
+│   └── ODBC-SETUP.md              # ODBC setup guide
+└── docs/
+    ├── database-setup.md           # Database setup guide
+    ├── QUICK-START.md              # Step-by-step guide
+    └── FUNCTION-REFERENCE.md       # API documentation
 ```
 
-One file per database table.
+One file per database table in the API.
 
 ## Configuration
 
-**Database (db-functions.lc line 22):**
+**Database (API/lib/db-functions.lc lines 29-75):**
+
+The API now supports easy database switching. Simply edit these functions:
+
 ```livecode
-put "localhost" into tHost
-put "mydb" into tDatabase
-put "user" into tUser
-put "pass" into tPassword
+-- Choose your database type
+function getDBType
+  return "mysql"  -- Options: "mysql", "postgresql", "sqlite", "odbc"
+end getDBType
+
+function getDBHost
+  return "localhost"
+end getDBHost
+
+function getDBName
+  return "myapp_api"  -- For SQLite: "/path/to/database.db"
+end getDBName
+
+function getDBUser
+  return "db_user"
+end getDBUser
+
+function getDBPassword
+  return "db_password"
+end getDBPassword
+
+-- For ODBC connections only:
+function getODBCDSN
+  return "MyODBCDSN"
+end getODBCDSN
 ```
+
+**See [`API/lib/db-config-example.lc`](API/lib/db-config-example.lc) for complete configuration examples for all database types.**
 
 **JWT Secret (db-functions.lc line 63):**
 ```livecode
