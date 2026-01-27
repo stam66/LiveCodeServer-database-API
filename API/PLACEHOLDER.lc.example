@@ -224,21 +224,20 @@ function handleCreatePLACEHOLDER pConnectionID, pPostData, pAuthPayload
   put sqlEscape(tCreatedBy) into tSafeCreatedBy
 
   -- Build INSERT query
-  -- Note: created_at is handled automatically by database (DEFAULT CURRENT_TIMESTAMP)
-  put "INSERT INTO placeholder_table (name, description, status, created_by) VALUES ('" into tSQL
+  put "INSERT INTO placeholder_table (name, description, status, created_by, created_at) VALUES ('" into tSQL
   put tSafeName & "', '" after tSQL
   put tSafeDescription & "', '" after tSQL
   put tSafeStatus & "', '" after tSQL
-  put tSafeCreatedBy & "')" after tSQL
+  put tSafeCreatedBy & "', NOW())" after tSQL
 
   revExecuteSQL pConnectionID, tSQL
 
-  if the result is not empty then
+  if the result begins with "revdberr" then
     return jsonError("Failed to create record: " & the result)
   end if
 
-  -- Get the newly created ID (database-agnostic)
-  put getLastInsertID(pConnectionID) into tNewID
+  -- Get the newly created ID
+  put revDataFromQuery(tab, return, pConnectionID, "SELECT LAST_INSERT_ID()") into tNewID
 
   -- Optional: Log to audit table
   -- put "INSERT INTO audit (audit_user, audit_table, audit_primarykey, action) VALUES ('" & tSafeCreatedBy & "', 'placeholder_table', " & tNewID & ", 'INSERT')" into tAuditSQL
@@ -308,9 +307,9 @@ function handleUpdatePLACEHOLDER pConnectionID, pPostData, pAuthPayload
     put "status = '" & sqlEscape(tStatus) & "'" after tUpdates
   end if
 
-  -- Always update updated_by (updated_at handled automatically by database triggers)
+  -- Always update timestamp and updated_by
   if tUpdates is not empty then put ", " after tUpdates
-  put "updated_by = '" & sqlEscape(tUpdatedBy) & "'" after tUpdates
+  put "updated_at = NOW(), updated_by = '" & sqlEscape(tUpdatedBy) & "'" after tUpdates
 
   if tUpdates is empty then
     return jsonError("No fields to update")
@@ -321,7 +320,7 @@ function handleUpdatePLACEHOLDER pConnectionID, pPostData, pAuthPayload
 
   revExecuteSQL pConnectionID, tSQL
 
-  if the result is not empty then
+  if the result begins with "revdberr" then
     return jsonError("Failed to update record: " & the result)
   end if
 
@@ -361,15 +360,14 @@ function handleDeletePLACEHOLDER pConnectionID, pID, pAuthPayload
   put pAuthPayload["username"] into tDeletedBy
 
   -- OPTION 1: Soft delete (recommended - preserves data)
-  -- Note: Using CURRENT_TIMESTAMP for database compatibility (MySQL, PostgreSQL, SQLite, SQL Server)
-  put "UPDATE placeholder_table SET is_active = 0, deleted_at = CURRENT_TIMESTAMP, deleted_by = '" & sqlEscape(tDeletedBy) & "' WHERE id =" && tSafeID into tSQL
+  put "UPDATE placeholder_table SET is_active = 0, deleted_at = NOW(), deleted_by = '" & sqlEscape(tDeletedBy) & "' WHERE id =" && tSafeID into tSQL
 
   -- OPTION 2: Hard delete (permanent - use with caution)
   -- put "DELETE FROM placeholder_table WHERE id =" && tSafeID into tSQL
 
   revExecuteSQL pConnectionID, tSQL
 
-  if the result is not empty then
+  if the result begins with "revdberr" then
     return jsonError("Failed to delete record: " & the result)
   end if
 

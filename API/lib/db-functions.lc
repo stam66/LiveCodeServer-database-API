@@ -2,7 +2,7 @@
 -- ============================================================================
 -- DATABASE HELPER FUNCTIONS for LiveCode Server API
 -- ============================================================================
--- Version: 2.1 - Fixed HMAC with Manual XOR (No bitXor dependency)
+-- Version: 2.2 - Optimized with native bitXor for improved performance
 -- Includes: Database, JSON, Security, Passwords, JWT
 -- Dependencies: photon-library.lc, settings.lc
 -- ============================================================================
@@ -15,85 +15,22 @@ include "settings.lc"
 -- DATABASE FUNCTIONS
 -- ============================================================================
 
--- Connect to database (supports MySQL, PostgreSQL, SQLite, ODBC)
+-- Connect to MySQL database
 -- Returns: Connection ID (number) or ERROR string
--- Note: Automatically uses the database type configured in settings.lc
 function dbConnect
-  put getDBType() into tType
   put getDBHost() into tHost
   put getDBName() into tDatabase
   put getDBUser() into tUser
   put getDBPassword() into tPassword
-
-  -- Open database connection based on type
-  switch tType
-    case "mysql"
-      put revOpenDatabase("mysql", tHost, tDatabase, tUser, tPassword) into tConnectionID
-      break
-
-    case "postgresql"
-      put revOpenDatabase("postgresql", tHost, tDatabase, tUser, tPassword) into tConnectionID
-      break
-
-    case "sqlite"
-      -- SQLite only needs the database path (file path)
-      put revOpenDatabase("sqlite", tDatabase) into tConnectionID
-      break
-
-    case "odbc"
-      -- ODBC can use either DSN or connection string
-      put getODBCDSN() into tDSN
-      -- Using DSN (recommended):
-      put revOpenDatabase("odbc", "DSN=" & tDSN & ";UID=" & tUser & ";PWD=" & tPassword) into tConnectionID
-      -- Alternative: Direct connection without DSN:
-      -- put revOpenDatabase("odbc", tHost, tDatabase, tUser, tPassword) into tConnectionID
-      break
-
-    default
-      return "ERROR: Unknown database type:" && tType
-  end switch
-
+  
+  put revOpenDatabase("mysql", tHost, tDatabase, tUser, tPassword) into tConnectionID
+  
   if tConnectionID is a number then
     return tConnectionID
   else
     return "ERROR: Database connection failed -" && tConnectionID
   end if
 end dbConnect
-
-
--- Get last inserted ID (database-agnostic)
--- Parameters:
---   pConnectionID (Number) - Active database connection ID
--- Returns: Last inserted ID
--- Note: Automatically uses correct function based on database type
-function getLastInsertID pConnectionID
-  put getDBType() into tType
-
-  switch tType
-    case "mysql"
-      put revDataFromQuery(,,pConnectionID,"SELECT LAST_INSERT_ID()") into tID
-      break
-
-    case "postgresql"
-      put revDataFromQuery(,,pConnectionID,"SELECT lastval()") into tID
-      break
-
-    case "sqlite"
-      put revDataFromQuery(,,pConnectionID,"SELECT last_insert_rowid()") into tID
-      break
-
-    case "odbc"
-      -- Assumes SQL Server for ODBC connections
-      -- Other ODBC databases may need different approaches
-      put revDataFromQuery(,,pConnectionID,"SELECT SCOPE_IDENTITY()") into tID
-      break
-
-    default
-      return "ERROR: Cannot get last insert ID for database type:" && tType
-  end switch
-
-  return tID
-end getLastInsertID
 
 
 -- ============================================================================
@@ -218,6 +155,8 @@ end validateNumericID
 -- ============================================================================
 -- BITWISE HELPER FUNCTIONS
 -- ============================================================================
+-- Note: Uses native bitXor for XOR operations (significant performance gain)
+-- The bitAnd and bitShift helpers are retained for potential compatibility
 
 -- Convert binary hash to hexadecimal string
 -- Parameters: pBinary (String) - Binary data
@@ -281,28 +220,49 @@ function hexToBinary pHex
 end hexToBinary
 
 
--- Manual XOR implementation (bitwise exclusive OR)
--- Parameters: pA, pB (Integers 0-255) - Bytes to XOR
--- Returns: Integer result of A XOR B
-function xorByte pA, pB
+-- Manual bitwise AND implementation
+-- Parameters: pA, pB (Integers) - Values to AND
+-- Returns: Integer result of A AND B
+function bitAnd pA, pB
   put 0 into tResult
   put 1 into tBit
-  
-  repeat 8 times
+
+  repeat 32 times  -- Support 32-bit integers
     put pA mod 2 into tBitA
     put pB mod 2 into tBitB
-    
-    if tBitA is not tBitB then
+
+    if tBitA is 1 and tBitB is 1 then
       put tResult + tBit into tResult
     end if
-    
+
     put pA div 2 into pA
     put pB div 2 into pB
     put tBit * 2 into tBit
+
+    -- Early exit if both values are 0
+    if pA is 0 and pB is 0 then
+      exit repeat
+    end if
   end repeat
-  
+
   return tResult
-end xorByte
+end bitAnd
+
+
+-- Manual right bit shift implementation
+-- Parameters: pValue (Integer) - Value to shift, pShift (Integer) - Number of bits
+-- Returns: Integer result of pValue >> pShift
+function bitShift pValue, pShift
+  -- Negative shift means left shift
+  if pShift < 0 then
+    put pValue * (2 ^ (-pShift)) into tResult
+    return tResult
+  end if
+
+  -- Positive shift means right shift
+  put pValue div (2 ^ pShift) into tResult
+  return tResult
+end bitShift
 
 
 -- ============================================================================
@@ -333,9 +293,11 @@ end constantTimeCompare
 
 
 -- Get number of password hashing iterations (configurable)
--- Returns: Integer (default 1000)
+-- Returns: Integer (default 10,000)
+-- Note: OWASP recommends 600,000+ for PBKDF2-SHA256, but 10,000 provides
+-- good security while maintaining reasonable performance for web applications
 function getPasswordIterations
-  return 1000
+  return 10000
 end getPasswordIterations
 
 
@@ -354,59 +316,115 @@ function generateSalt
 end generateSalt
 
 
--- Hash password with salt using PBKDF2-like approach
+-- PBKDF2 implementation (RFC 2898) using HMAC-SHA256
+-- Parameters:
+--   pPassword (String) - Password to derive key from
+--   pSalt (String) - Cryptographic salt
+--   pIterations (Integer) - Number of iterations (default 10,000)
+--   pDkLen (Integer) - Desired key length in bytes (default 32)
+-- Returns: Binary data of derived key
+-- Note: This matches Xojo's Crypto.PBKDF2 with SHA2_256
+function pbkdf2 pPassword, pSalt, pIterations, pDkLen
+  -- Default parameters
+  if pIterations is empty then put 10000 into pIterations
+  if pDkLen is empty then put 32 into pDkLen
+
+  put 32 into tHLen  -- SHA-256 output is 32 bytes
+
+  -- Calculate number of blocks needed: l = CEIL(dkLen / hLen)
+  put ceiling(pDkLen / tHLen) into tNumBlocks
+
+  put empty into tDerivedKey
+
+  -- For each block
+  repeat with tBlockIndex = 1 to tNumBlocks
+    -- INT_32_BE(i) - Convert block index to 4-byte big-endian
+    -- Using arithmetic instead of function calls to avoid operator conflicts
+    put numToChar((tBlockIndex div 16777216) mod 256) into tBlockBytes  -- Byte 1 (bits 24-31)
+    put numToChar((tBlockIndex div 65536) mod 256) after tBlockBytes     -- Byte 2 (bits 16-23)
+    put numToChar((tBlockIndex div 256) mod 256) after tBlockBytes       -- Byte 3 (bits 8-15)
+    put numToChar(tBlockIndex mod 256) after tBlockBytes                 -- Byte 4 (bits 0-7)
+
+    -- U_1 = PRF(Password, Salt || INT(i))
+    put hmacSHA256(pSalt & tBlockBytes, pPassword) into tU
+    put hexToBinary(tU) into tUBinary
+    put tUBinary into tF  -- F starts as U_1
+
+    -- U_2 through U_c
+    repeat with j = 2 to pIterations
+      put hmacSHA256(tUBinary, pPassword) into tU
+      put hexToBinary(tU) into tUBinary
+
+      -- XOR with F: F = F XOR U_j (using native bitXor for performance)
+      put empty into tNewF
+      repeat with k = 1 to the length of tF
+        put charToNum(char k of tF) into tByte1
+        put charToNum(char k of tUBinary) into tByte2
+        put numToChar(tByte1 bitXor tByte2) after tNewF
+      end repeat
+      put tNewF into tF
+    end repeat
+
+    -- Append this block to derived key
+    put tF after tDerivedKey
+  end repeat
+
+  -- Extract first dkLen bytes
+  return char 1 to pDkLen of tDerivedKey
+end pbkdf2
+
+
+-- Hash password with salt using PBKDF2 (RFC 2898) with HMAC-SHA256
 -- Parameters:
 --   pPassword (String) - Plain text password
 --   pSalt (String) - Salt value (32 chars recommended)
 -- Returns: "salt:hash" format string (hash is hex)
+-- Compatible with Xojo's Crypto.PBKDF2(salt, password, 10000, 32, SHA2_256)
 function hashPassword pPassword, pSalt
   put getPasswordIterations() into tIterations
-  put pPassword into tHash
-  
-  repeat tIterations times
-    put pSalt & tHash into tData
-    put messageDigest(tData, "SHA-256") into tBinary
-    -- Convert binary to hex for consistent storage
-    put binaryToHex(tBinary) into tHash
-  end repeat
-  
+
+  -- Use proper PBKDF2 implementation
+  put pbkdf2(pPassword, pSalt, tIterations, 32) into tBinary
+
+  -- Convert binary to hex for storage
+  put binaryToHex(tBinary) into tHash
+
   return pSalt & ":" & tHash
 end hashPassword
 
 
--- Verify password against stored hash
+-- Verify password against stored hash using PBKDF2
 -- Parameters:
 --   pPassword (String) - Plain text password to verify
 --   pStoredHash (String) - Stored hash in "salt:hash" format
 -- Returns: true/false
+-- Compatible with Xojo's Crypto.PBKDF2(salt, password, 10000, 32, SHA2_256)
 function verifyPassword pPassword, pStoredHash
-  -- Check if hash contains salt (new format: "salt:hash")
-  if ":" is in pStoredHash then
-    -- New format with salt
-    set the itemDelimiter to ":"
-    put item 1 of pStoredHash into tSalt
-    put item 2 of pStoredHash into tStoredHashValue
-
-    -- Hash the provided password with the stored salt
-    put hashPassword(pPassword, tSalt) into tNewHash
-    set the itemDelimiter to ":"
-    put item 2 of tNewHash into tNewHashValue
-
-    -- Compare hashes using constant-time comparison to prevent timing attacks
-    return constantTimeCompare(toLower(tNewHashValue), toLower(tStoredHashValue))
-  else
-    -- Old format without salt - direct hash comparison
-    put messageDigest(pPassword, "SHA-256") into tBinary
-    put binaryToHex(tBinary) into tPlainHash
-    -- Compare using constant-time comparison to prevent timing attacks
-    return constantTimeCompare(toLower(tPlainHash), toLower(pStoredHash))
+  -- PBKDF2 format must be "salt:hash"
+  if ":" is not in pStoredHash then
+    -- Invalid format
+    return false
   end if
+
+  -- Extract salt and hash
+  set the itemDelimiter to ":"
+  put item 1 of pStoredHash into tSalt
+  put item 2 of pStoredHash into tStoredHashValue
+
+  -- Hash the provided password with the stored salt using PBKDF2
+  put hashPassword(pPassword, tSalt) into tNewHash
+  set the itemDelimiter to ":"
+  put item 2 of tNewHash into tNewHashValue
+
+  -- Compare hashes using constant-time comparison to prevent timing attacks
+  return constantTimeCompare(toLower(tNewHashValue), toLower(tStoredHashValue))
 end verifyPassword
 
 
 -- Check if password hash needs migration to new format
 -- Parameters: pHash (String) - Stored password hash
 -- Returns: true if needs migration, false if already new format
+-- Legacy formats (MD5, SHA-1, SHA-256, plain text) all need migration
 function needsPasswordMigration pHash
   return (":" is not in pHash)
 end needsPasswordMigration
@@ -441,10 +459,8 @@ function checkRateLimit pConnectionID, pIP, pEndpoint, pMaxAttempts, pWindowSeco
   put revDataFromQuery(tab, return, pConnectionID, tSQL) into tData
 
   if tData begins with "revdberr" or tData is empty then
-    -- No existing record, create one
-    put "INSERT INTO rate_limit (ip_address, endpoint, attempts, last_attempt) VALUES ('" & tSafeIP & "', '" & tSafeEndpoint & "', 1, NOW())" into tSQL
-    revExecuteSQL pConnectionID, tSQL
-    return empty  -- Allow request
+    -- No existing record - allow request (don't create record until failure)
+    return empty
   end if
 
   -- Parse existing record
@@ -457,21 +473,42 @@ function checkRateLimit pConnectionID, pIP, pEndpoint, pMaxAttempts, pWindowSeco
     return "Too many requests. Please try again later."
   end if
 
-  -- Increment attempts
-  add 1 to tAttempts
-
-  if tAttempts > pMaxAttempts then
+  -- Check if attempts exceed max (but don't increment here - that's done on failure)
+  if tAttempts >= pMaxAttempts then
     -- Lock the IP for the window duration
-    put "UPDATE rate_limit SET attempts =" && tAttempts & ", last_attempt = NOW(), locked_until = DATE_ADD(NOW(), INTERVAL" && pWindowSeconds && "SECOND) WHERE ip_address = '" & tSafeIP & "' AND endpoint = '" & tSafeEndpoint & "'" into tSQL
+    put "UPDATE rate_limit SET locked_until = DATE_ADD(NOW(), INTERVAL" && pWindowSeconds && "SECOND) WHERE ip_address = '" & tSafeIP & "' AND endpoint = '" & tSafeEndpoint & "'" into tSQL
     revExecuteSQL pConnectionID, tSQL
     return "Too many requests. Please try again later."
-  else
-    -- Update attempts
-    put "UPDATE rate_limit SET attempts =" && tAttempts & ", last_attempt = NOW() WHERE ip_address = '" & tSafeIP & "' AND endpoint = '" & tSafeEndpoint & "'" into tSQL
-    revExecuteSQL pConnectionID, tSQL
-    return empty  -- Allow request
   end if
+
+  return empty  -- Allow request
 end checkRateLimit
+
+
+-- Record a failed attempt for rate limiting
+-- Call this ONLY after a failed login attempt
+-- Parameters:
+--   pConnectionID (Integer) - Database connection ID
+--   pIP (String) - Client IP address
+--   pEndpoint (String) - Endpoint name
+on recordFailedAttempt pConnectionID, pIP, pEndpoint
+  put sqlEscape(pIP) into tSafeIP
+  put sqlEscape(pEndpoint) into tSafeEndpoint
+
+  -- Check if record exists
+  put "SELECT attempts FROM rate_limit WHERE ip_address = '" & tSafeIP & "' AND endpoint = '" & tSafeEndpoint & "'" into tSQL
+  put revDataFromQuery(tab, return, pConnectionID, tSQL) into tData
+
+  if tData begins with "revdberr" or tData is empty then
+    -- No existing record, create one with 1 attempt
+    put "INSERT INTO rate_limit (ip_address, endpoint, attempts, last_attempt) VALUES ('" & tSafeIP & "', '" & tSafeEndpoint & "', 1, NOW())" into tSQL
+    revExecuteSQL pConnectionID, tSQL
+  else
+    -- Increment existing record
+    put "UPDATE rate_limit SET attempts = attempts + 1, last_attempt = NOW() WHERE ip_address = '" & tSafeIP & "' AND endpoint = '" & tSafeEndpoint & "'" into tSQL
+    revExecuteSQL pConnectionID, tSQL
+  end if
+end recordFailedAttempt
 
 
 -- Reset rate limit for an IP address (useful after successful login)
@@ -715,7 +752,7 @@ function createSignature pData, pSecret
 end createSignature
 
 
--- HMAC-SHA256 implementation for LiveCode (with manual XOR)
+-- HMAC-SHA256 implementation for LiveCode (using native bitXor)
 -- Parameters:
 --   pMessage (String) - Message to hash
 --   pKey (String) - Secret key
@@ -737,14 +774,14 @@ function hmacSHA256 pMessage, pKey
     end repeat
   end if
   
-  -- Create inner and outer padding using manual XOR
+  -- Create inner and outer padding using native bitXor (significant performance gain)
   put empty into tInnerPad
   put empty into tOuterPad
-  
+
   repeat with i = 1 to tBlockSize
     put charToNum(char i of pKey) into tKeyByte
-    put numToChar(xorByte(tKeyByte, 54)) after tInnerPad  -- 0x36 = 54
-    put numToChar(xorByte(tKeyByte, 92)) after tOuterPad  -- 0x5C = 92
+    put numToChar(tKeyByte bitXor 54) after tInnerPad  -- 0x36 = 54
+    put numToChar(tKeyByte bitXor 92) after tOuterPad  -- 0x5C = 92
   end repeat
   
   -- Calculate inner hash (messageDigest returns binary)

@@ -1,176 +1,155 @@
 <?lc
--- ============================================================================
--- AUTHENTICATION ENDPOINT WITH SALTED PASSWORDS
--- LiveCode Server RPC API Template
--- ============================================================================
---
--- Handles user login and JWT token generation with secure password hashing
---
--- Endpoint: /auth.lc?action=login
--- Method: POST
--- Body: {"username":"admin","password":"password123"}
---
--- Response: {"status":"success","data":{"token":"...","user":{...}}}
---
--- SECURITY: Uses salted SHA256 password hashing for secure authentication
---
--- See FUNCTION-REFERENCE.md for complete API documentation
--- ============================================================================
+-- Authentication API
 
 include "lib/db-functions.lc"
 
 on startup
+  -- Set security headers first
+  setSecurityHeaders
   put header "Content-Type: application/json"
-  
+
   put $_GET["action"] into tAction
-  
+  put $_POST_RAW into tPostData
+
   switch tAction
     case "login"
-      put handleLogin() into tResponse
+      put handleLogin(tPostData) into tResponse
+      break
+    case "refresh"
+      put handleRefresh() into tResponse
       break
     default
-      put jsonError("Invalid action. Use: login") into tResponse
+      put jsonError("Invalid action. Use: login, refresh") into tResponse
   end switch
-  
+
   put tResponse
 end startup
 
 startup
 
-
--- ============================================================================
--- LOGIN HANDLER
--- ============================================================================
-
--- Handle login request and issue JWT token
--- Reads credentials from $_POST_RAW JSON body
--- Returns: JSON response with token and user info
-function handleLogin
-  -- Get credentials from POST body
-  put $_POST_RAW into tPostData
-  
-  if tPostData is empty then
-    return jsonError("No credentials provided")
+function handleLogin pPostData
+  if pPostData is empty then
+    return jsonError("No data provided")
   end if
-  
-  -- Parse JSON credentials
-  put JSONParser(tPostData) into tCredentials
-  
-  if tCredentials is not an array then
-    return jsonError("Invalid JSON in request body")
+
+  -- Parse JSON
+  put JSONParser(pPostData) into tData
+
+  if tData is not an array then
+    return jsonError("Invalid JSON format")
   end if
-  
-  put tCredentials["username"] into tUsername
-  put tCredentials["password"] into tPassword
-  
+
+  put tData["username"] into tUsername
+  put tData["password"] into tPassword
+
   if tUsername is empty or tPassword is empty then
     return jsonError("Username and password required")
   end if
-  
+
   -- Connect to database
   put dbConnect() into tConnectionID
   if tConnectionID begins with "ERROR:" then
     return jsonError(tConnectionID)
   end if
-  
-  -- Query user with salt and iterations
-  put "SELECT id, username, password_hash, password_salt, password_iterations, name, email, is_active" into tSQL
-  put " FROM users" after tSQL
-  put " WHERE username = '" & sqlEscape(tUsername) & "'" after tSQL
-  put " AND is_active = 1" after tSQL
-  
-  put revDataFromQuery(tab, return, tConnectionID, tSQL) into tData
-  
-  revCloseDatabase tConnectionID
-  
-  if tData begins with "revdberr" or tData is empty then
+
+  -- Check rate limiting: 7 failed attempts per 15 minutes (900 seconds)
+  put getClientIP() into tClientIP
+  put checkRateLimit(tConnectionID, tClientIP, "login", 7, 900) into tRateLimitError
+
+  if tRateLimitError is not empty then
+    revCloseDatabase tConnectionID
+    put header "Status: 429 Too Many Requests"
+    return jsonError(tRateLimitError)
+  end if
+
+  -- Get user from database
+  put "SELECT id, username, password_hash, email, name, password_salt, is_active FROM users WHERE username = '" & sqlEscape(tUsername) & "'" into tSQL
+  put revDataFromQuery(tab, return, tConnectionID, tSQL) into tUserData
+
+  if tUserData begins with "revdberr" or tUserData is empty then
+    recordFailedAttempt tConnectionID, tClientIP, "login"
+    revCloseDatabase tConnectionID
     return jsonError("Invalid username or password")
   end if
-  
-  -- Parse user data
-  split tData by tab
-  
-  put tData[1] into tUserID
-  put tData[2] into tDBUsername
-  put tData[3] into tPasswordHash
-  put tData[4] into tPasswordSalt
-  put tData[5] into tPasswordIterations
-  put tData[6] into tName
-  put tData[7] into tEmail
-  
-  -- Verify password with enhanced hashing (iterations stored in DB)
-  if tPasswordSalt is empty then
-    -- Legacy unsalted hash - upgrade to enhanced version
-    put messageDigest(tPassword, "SHA256") into tComputedHash
-    
-    if tComputedHash is tPasswordHash then
-      -- Valid legacy password - upgrade to enhanced version with iterations
-      put hashPasswordEnhanced(tPassword) into tEnhanced
-      
-      -- Validate user ID
-      put validateInteger(tUserID) into tSafeUserID
-      if tSafeUserID is empty then
-        return jsonError("Invalid user ID")
-      end if
-      
-      -- Update database with enhanced password (with iterations)
-      put dbConnect() into tUpgradeConn
-      put "UPDATE users SET password_hash = '" & sqlEscape(tEnhanced["hash"]) & "'" into tUpgradeSQL
-      put ", password_salt = '" & sqlEscape(tEnhanced["salt"]) & "'" after tUpgradeSQL
-      put ", password_iterations = " & tEnhanced["iterations"] after tUpgradeSQL
-      put " WHERE id = " & tSafeUserID after tUpgradeSQL
-      revExecuteSQL tUpgradeConn, tUpgradeSQL
-      revCloseDatabase tUpgradeConn
-    else
-      return jsonError("Invalid username or password")
-    end if
-    
-  else if tPasswordIterations is empty then
-    -- Legacy single-iteration salted hash - upgrade to enhanced version
-    if verifyPassword(tPassword, tPasswordHash, tPasswordSalt) then
-      -- Valid legacy salted password - upgrade to iterations
-      put hashPasswordEnhanced(tPassword) into tEnhanced
-      
-      -- Validate user ID
-      put validateInteger(tUserID) into tSafeUserID
-      if tSafeUserID is empty then
-        return jsonError("Invalid user ID")
-      end if
-      
-      -- Update database with enhanced password
-      put dbConnect() into tUpgradeConn
-      put "UPDATE users SET password_hash = '" & sqlEscape(tEnhanced["hash"]) & "'" into tUpgradeSQL
-      put ", password_salt = '" & sqlEscape(tEnhanced["salt"]) & "'" after tUpgradeSQL
-      put ", password_iterations = " & tEnhanced["iterations"] after tUpgradeSQL
-      put " WHERE id = " & tSafeUserID after tUpgradeSQL
-      revExecuteSQL tUpgradeConn, tUpgradeSQL
-      revCloseDatabase tUpgradeConn
-    else
-      return jsonError("Invalid username or password")
-    end if
-    
-  else
-    -- Enhanced password verification with iterations
-    put verifyPasswordEnhanced(tPassword, tPasswordHash, tPasswordSalt, tPasswordIterations) into tIsValid
-    
-    if tIsValid is not true then
-      return jsonError("Invalid username or password")
-    end if
+
+  split tUserData by tab
+
+  -- Check if user is active
+  if tUserData[7] is not 1 then
+    recordFailedAttempt tConnectionID, tClientIP, "login"
+    revCloseDatabase tConnectionID
+    return jsonError("User account is inactive")
   end if
-  
-  -- Generate JWT token (30 minute expiry)
-  put generateJWT(tUserID, tDBUsername, tName, 1800) into tToken
-  
-  -- Build user object for response
-  put tUserID into tUser["id"]
-  put tDBUsername into tUser["username"]
-  put tName into tUser["name"]
-  put tEmail into tUser["email"]
-  
-  -- Return success with token
+
+  -- Verify password
+  put tUserData[3] into tStoredHash      -- Column 3 is password_hash
+  put tUserData[6] into tSalt            -- Column 6 is password_salt
+
+  -- Determine the full hash format:
+  -- If password_hash already contains ":", it includes the salt, use as-is
+  -- Otherwise, construct "salt:hash" if salt exists
+  if ":" is in tStoredHash then
+    -- Hash already in "salt:hash" format
+    put tStoredHash into tFullHash
+  else if tSalt is not empty then
+    -- Separate salt column - construct "salt:hash"
+    put tSalt & ":" & tStoredHash into tFullHash
+  else
+    -- Old format - plain hash with no salt
+    put tStoredHash into tFullHash
+  end if
+
+  if not verifyPassword(tPassword, tFullHash) then
+    recordFailedAttempt tConnectionID, tClientIP, "login"
+    revCloseDatabase tConnectionID
+    return jsonError("Invalid username or password")
+  end if
+
+  -- Password verified with PBKDF2
+  -- Both API and Xojo web app use compatible PBKDF2 implementations
+  -- API: pbkdf2() function with HMAC-SHA256
+  -- Xojo: Crypto.PBKDF2(salt, password, 10000, 32, SHA2_256)
+
+  -- Generate JWT token
+  put generateJWT(tUserData[1], tUserData[2], tUserData[5]) into tToken
+
+  if tToken begins with "ERROR:" then
+    revCloseDatabase tConnectionID
+    return jsonError("Failed to generate token")
+  end if
+
+  -- Reset rate limit after successful login
+  resetRateLimit tConnectionID, tClientIP, "login"
+
+  -- Return success with token and user info
   put tToken into tResult["token"]
-  put tUser into tResult["user"]
-  
+  put tUserData[1] into tResult["user"]["id"]
+  put tUserData[2] into tResult["user"]["username"]
+  put tUserData[5] into tResult["user"]["name"]
+  put tUserData[4] into tResult["user"]["email"]
+
+  revCloseDatabase tConnectionID
+
   return jsonSuccess(tResult)
 end handleLogin
+
+function handleRefresh
+  -- Require authentication (will verify current token)
+  put requireAuth() into tPayload
+
+  -- If we got here, token is valid - generate new token
+  put generateJWT(tPayload["user_id"], tPayload["username"], tPayload["name"]) into tNewToken
+
+  if tNewToken begins with "ERROR:" then
+    return jsonError("Failed to refresh token")
+  end if
+
+  -- Return new token with user info
+  put tNewToken into tResult["token"]
+  put tPayload["user_id"] into tResult["user"]["id"]
+  put tPayload["username"] into tResult["user"]["username"]
+  put tPayload["name"] into tResult["user"]["name"]
+
+  return jsonSuccess(tResult)
+end handleRefresh
 ?>
