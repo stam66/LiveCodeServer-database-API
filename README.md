@@ -2,6 +2,14 @@
 
 This template provides a reusable foundation for creating secure RPC (Remote Procedure Call) API endpoints with LiveCode Server. It includes authentication, security headers, rate limiting, and common CRUD operations.
 
+## Version 1.1  
+- PBKDF2 now fully implemented with 10,000 bitwise operations, as LiveCode does not implement PBKDF2 natively and this needed to be created manually for best possible security. HMAC/PBKDF2 runs about 1.6 additional million bitXor operations above and beyond the millions that MessageDigest does with SHA256.  
+The initial implementation was very slow, so I had reduced the iterations to 1000 interactions but this was of course causing a mismatch with systems with natively implemented PBKDF2 (namely apps written in other environments).  
+Speed of operation has significantly increased from about 14-15 seconds (unusable as a login system) to about 4 seconds (usable and intentional, to stop hackers from guessing chars in the user's password by the time it takes to reject a password).  
+PBKDF2 has been implemented and salted hashes match those of other systems generating a salted hash this way.
+- Error handling improved - the API was reporting failure on some successful CRUD operations, now fixed.
+- Rate limiting function - prevent excessive incorrect logins from teh same IP addressed is now corrected and works normally (it was previously counting correct logins as well, so the first incorrect login would trigger a timeout, user not permitted to log in, now fixed.  
+
 ## 🔄 RPC vs REST
 
 This is an **RPC-style API**, not REST:
